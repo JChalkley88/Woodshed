@@ -1,0 +1,32 @@
+/* Self-hosted typefaces — woodshed-design-spec.md section 2.
+   Drop the woff2 files into public/assets/fonts/ and these activate with no
+   code change; until then the token stacks fall back to system faces.
+   Do not rely on Google Fonts at runtime (offline PWA requirement). */
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/assets/fonts/barlow-semi-condensed-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/assets/fonts/barlow-semi-condensed-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Share Tech Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/assets/fonts/share-tech-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/assets/fonts/caveat-600.woff2") format("woff2");
+}

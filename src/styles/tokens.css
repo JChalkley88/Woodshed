@@ -1,0 +1,91 @@
+/* Woodshed design tokens — woodshed-design-spec.md section 1.
+   These are the only colour values permitted in components. */
+:root {
+  /* Surfaces */
+  --panel: #232427;
+  --panel-hi: #2c2d31;
+  --panel-lo: #18191b;
+  --well: #101113;
+  --chassis: #0b0b0c;
+  --edge: #0d0e10;
+
+  /* Engraving (panel text) */
+  --engrave: #9a9b96;
+  --engrave-dim: #6b6c68;
+  --engrave-faint: #4f504c;
+
+  /* Stem identity colours (permanent, never reassigned) */
+  --stem-vocals: #e8a33d; /* also the brand accent */
+  --stem-drums: #d85a5a;
+  --stem-bass: #9b8ce8;
+  --stem-other: #4fb8a0;
+
+  /* LEDs */
+  --led-green: #6fe08e;
+  --led-amber: #e8c34d;
+  --led-red: #e24b4a;
+  --led-off: #1c1d1f;
+
+  /* LCD */
+  --lcd-bg: #0c1810;
+  --lcd-fg: #7ce08a;
+  --lcd-dim: #1e3a26;
+  --lcd-past: #3e6b4a;
+  --lcd-glow: 0 0 8px rgba(124, 224, 138, 0.5);
+
+  /* Tape (scribble strips and song label) */
+  --tape: #e9e4d8;
+  --tape-border: #c9c2b0;
+  --tape-ink: #3a342a;
+
+  /* Wood end cheeks */
+  --wood: repeating-linear-gradient(
+    175deg,
+    #4a3220 0 3px,
+    #3d2917 3px 5px,
+    #553b25 5px 9px
+  );
+
+  /* Materials (derived from the approved mockup, woodshed-desk-mockup.html).
+     Named here so components never hard-code hex; these are the metal and
+     plastic gradients of the extrusion device in spec section 3. */
+  --metal-knob-hi: #3c3d42;
+  --metal-knob-lo: #161719;
+  --metal-cap-1: #4a4b50;
+  --metal-cap-2: #2a2b2f;
+  --metal-cap-3: #232428;
+  --metal-cap-4: #3a3b40;
+  --metal-btn-hi: #37383d;
+  --metal-btn-lo: #232428;
+  --metal-btn-mute-hi: #2e2426;
+  --metal-btn-mute-lo: #1f1719;
+  --metal-tbtn-hi: #3e3f44;
+  --metal-tbtn-lo: #1e1f22;
+  --metal-play-hi: #f0b95e;
+  --metal-play-lo: #b9791e;
+  --metal-play-ink: #2a1d06;
+  --strip-hi: #28292d;
+  --strip-lo: #1e1f22;
+  --master-hi: #2b2c30;
+  --master-lo: #202124;
+  --plate-hi: #2e2f33;
+  --plate-lo: #202124;
+  --plate-ink: #d8d9d4;
+  --slot-face: #0a0b0c;
+  --slot-edge: #050506;
+  --tick: #55565a;
+  --indicator: #e6e6e1;
+  --playhead: #f2f2ee;
+  --lcd-outline: #2a4a33;
+  --lane-face: #0b0c0e;
+  --lane-edge: #08090a;
+
+  /* Typography. Self-hosted woff2 files were not present in /assets/fonts at
+     build time, so the stacks lead with the spec faces (activated the moment
+     the files land in public/assets/fonts, see fonts.css) and fall back to
+     visually adjacent system faces. No Google Fonts at runtime. */
+  --font-panel: "Barlow Semi Condensed", "Bahnschrift", "Arial Narrow",
+    "Helvetica Neue", sans-serif;
+  --font-lcd: "Share Tech Mono", "Consolas", "Lucida Console", monospace;
+  --font-scribble: "Caveat", "Segoe Script", "Comic Sans MS", cursive;
+}
