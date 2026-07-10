@@ -91,19 +91,33 @@ export default function SpikePage() {
     append(`webgpu adapter: ${env.webgpuAdapter ?? "NONE"}`);
     append(`crossOriginIsolated: ${env.crossOriginIsolated}, threads: ${env.hardwareConcurrency}`);
     const collected: SpikeResult[] = [];
-    // Probe overrides: ?only=<label-prefix>&optoff=1&createTimeout=<ms>
+    // Probe overrides: ?set=gate0 | ?only=<label-prefix>&optoff=1&
+    // threads=<n>&createTimeout=<ms>
     const params = new URLSearchParams(window.location.search);
     const only = params.get("only");
     const createTimeout = params.get("createTimeout");
-    const queue: SpikeRequest[] = BENCHMARKS.filter(
-      (b) => !only || b.label.startsWith(only),
-    ).map((b) => ({
-      ...b,
-      ...(params.get("optoff") === "1"
-        ? { label: `${b.label}-optoff`, graphOptimizationLevel: "disabled" as const }
-        : {}),
-      ...(createTimeout ? { createTimeoutMs: Number(createTimeout) } : {}),
-    }));
+    const threads = params.get("threads");
+    // Daylight gate step 0: onnxruntime issue #26858 — session creation
+    // hangs when numThreads > 1 but succeeds single-threaded. Everything
+    // runs with numThreads=1 plus one raise-after-create probe.
+    const GATE0: SpikeRequest[] = [
+      { label: "g0-fp16-wasm-1t", modelUrl: "/models/htdemucs_fp16weights.onnx", eps: ["wasm"], numThreads: 1, createTimeoutMs: 300_000 },
+      { label: "g0-fp16-webgpu-1t", modelUrl: "/models/htdemucs_fp16weights.onnx", eps: ["webgpu"], numThreads: 1, createTimeoutMs: 300_000 },
+      { label: "g0-fp32-webgpu-1t", modelUrl: "/models/htdemucs.onnx", eps: ["webgpu"], numThreads: 1, createTimeoutMs: 300_000 },
+      { label: "g0-fp32-wasm-1t", modelUrl: "/models/htdemucs.onnx", eps: ["wasm"], numThreads: 1, createTimeoutMs: 300_000 },
+      { label: "g0-fp16-wasm-1t-raise4", modelUrl: "/models/htdemucs_fp16weights.onnx", eps: ["wasm"], numThreads: 1, raiseThreadsTo: 4, createTimeoutMs: 300_000 },
+    ];
+    const base = params.get("set") === "gate0" ? GATE0 : BENCHMARKS;
+    const queue: SpikeRequest[] = base
+      .filter((b) => !only || b.label.startsWith(only))
+      .map((b) => ({
+        ...b,
+        ...(params.get("optoff") === "1"
+          ? { label: `${b.label}-optoff`, graphOptimizationLevel: "disabled" as const }
+          : {}),
+        ...(createTimeout ? { createTimeoutMs: Number(createTimeout) } : {}),
+        ...(threads ? { numThreads: Number(threads) } : {}),
+      }));
     while (queue.length > 0) {
       const bench = queue.shift()!;
       append(`starting ${bench.label}`);

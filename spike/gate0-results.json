@@ -1,0 +1,248 @@
+{
+  "env": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 14,
+    "deviceMemoryGB": 16,
+    "crossOriginIsolated": true,
+    "webgpuAdapter": "intel / xe-lpg"
+  },
+  "results": [
+    {
+      "label": "g0-fp16-wasm-1t",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc"
+    },
+    {
+      "label": "g0-fp16-wasm-1t-optoff",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 23170,
+      "numThreadsAtCreate": 1,
+      "inferenceMs": [
+        33320,
+        34238
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 34238,
+      "msPerAudioSecond": 4389,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12867,
+          0.01939,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0164
+      },
+      "heapUsedAfterMB": null
+    },
+    {
+      "label": "g0-fp16-webgpu-1t",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "webgpu"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc"
+    },
+    {
+      "label": "g0-fp16-webgpu-1t-optoff",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "webgpu"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 40052,
+      "numThreadsAtCreate": 1,
+      "inferenceMs": [
+        12192,
+        9305
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 9305,
+      "msPerAudioSecond": 1193,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12866,
+          0.01937,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0165
+      },
+      "heapUsedAfterMB": null
+    },
+    {
+      "label": "g0-fp32-webgpu-1t",
+      "modelUrl": "/models/htdemucs.onnx",
+      "eps": [
+        "webgpu"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc"
+    },
+    {
+      "label": "g0-fp32-webgpu-1t-optoff",
+      "modelUrl": "/models/htdemucs.onnx",
+      "eps": [
+        "webgpu"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 18510,
+      "numThreadsAtCreate": 1,
+      "inferenceMs": [
+        11333,
+        9969
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 9969,
+      "msPerAudioSecond": 1278,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12866,
+          0.01937,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0164
+      },
+      "heapUsedAfterMB": null
+    },
+    {
+      "label": "g0-fp32-wasm-1t",
+      "modelUrl": "/models/htdemucs.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc"
+    },
+    {
+      "label": "g0-fp32-wasm-1t-optoff",
+      "modelUrl": "/models/htdemucs.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 10142,
+      "numThreadsAtCreate": 1,
+      "inferenceMs": [
+        14468,
+        15016
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 15016,
+      "msPerAudioSecond": 1925,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12867,
+          0.0194,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0164
+      },
+      "heapUsedAfterMB": null
+    },
+    {
+      "label": "g0-fp16-wasm-1t-raise4",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc"
+    },
+    {
+      "label": "g0-fp16-wasm-1t-raise4-optoff",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 8645,
+      "numThreadsAtCreate": 1,
+      "raisedThreadsTo": 4,
+      "raiseThreadsNote": "env accepted the new value; note the WASM runtime initialises its thread pool on first use, so this may have no effect on an already-created session",
+      "inferenceMs": [
+        14927,
+        14062
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 14062,
+      "msPerAudioSecond": 1803,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12867,
+          0.01939,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0164
+      },
+      "heapUsedAfterMB": null
+    }
+  ]
+}

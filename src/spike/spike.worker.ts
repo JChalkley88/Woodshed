@@ -35,6 +35,11 @@ export interface SpikeRequest {
   graphOptimizationLevel?: "all" | "basic" | "extended" | "disabled";
   /** Session creation allowance override (extended probes). */
   createTimeoutMs?: number;
+  /** After a successful (typically single-threaded) session creation, set
+   *  ort.env.wasm.numThreads to this before inference, to test whether the
+   *  thread count can be raised once creation is done (issue #26858
+   *  workaround probing). */
+  raiseThreadsTo?: number;
 }
 
 export interface SpikeResult {
@@ -55,6 +60,9 @@ export interface SpikeResult {
   msPerAudioSecond?: number;
   heapUsedBeforeMB?: number | null;
   heapUsedAfterMB?: number | null;
+  numThreadsAtCreate?: number;
+  raisedThreadsTo?: number;
+  raiseThreadsNote?: string;
   sanity?: {
     outputDims: number[];
     finite: boolean;
@@ -229,6 +237,19 @@ async function runSpike(req: SpikeRequest): Promise<SpikeResult> {
       clearInterval(heartbeat);
     }
     result.sessionCreateMs = Math.round(performance.now() - tCreate);
+    result.numThreadsAtCreate = ort.env.wasm.numThreads;
+
+    if (req.raiseThreadsTo) {
+      try {
+        ort.env.wasm.numThreads = req.raiseThreadsTo;
+        result.raisedThreadsTo = req.raiseThreadsTo;
+        result.raiseThreadsNote =
+          "env accepted the new value; note the WASM runtime initialises its thread pool on first use, so this may have no effect on an already-created session";
+        post("progress", `${req.label}: raised numThreads to ${req.raiseThreadsTo} post-create`);
+      } catch (err) {
+        result.raiseThreadsNote = `raising numThreads threw: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
 
     let samples = TEN_SECONDS;
     let chunk = makeTestChunk(samples);
