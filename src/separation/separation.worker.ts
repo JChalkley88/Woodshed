@@ -85,6 +85,55 @@ function ensureSession(): Promise<DemucsSession> {
   return demucsPromise;
 }
 
+/** A GPU device loss leaves session.run pending forever (observed on the
+ *  Intel iGPU after ~30 consecutive dispatch-heavy chunks). Guard every
+ *  chunk with a timeout scaled from measured chunk times; on a hang or
+ *  failure, tear the session down, recreate it (cheap with the
+ *  pre-optimised model), and retry the chunk once before giving up. The
+ *  partials store means even a hard failure resumes rather than restarts. */
+async function runChunkWithRecovery(
+  chunkBuf: Float32Array,
+  chunkTimes: number[],
+  chunkIndex: number,
+): Promise<Float32Array> {
+  const avg =
+    chunkTimes.length > 0
+      ? chunkTimes.reduce((a, b) => a + b, 0) / chunkTimes.length
+      : null;
+  const timeoutMs = Math.max(90_000, avg ? avg * 6 : 0);
+  for (let attempt = 0; ; attempt++) {
+    const demucs = await ensureSession();
+    try {
+      return await Promise.race([
+        runSegment(demucs, chunkBuf, SEGMENT_SAMPLES),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `chunk ${chunkIndex} timed out after ${Math.round(timeoutMs / 1000)}s`,
+                ),
+              ),
+            timeoutMs,
+          ),
+        ),
+      ]);
+    } catch (err) {
+      if (attempt >= 1) throw err;
+      post({
+        type: "warming",
+        message: `chunk ${chunkIndex} failed (${err instanceof Error ? err.message : err}); recreating session and retrying`,
+      });
+      try {
+        await (await demucsPromise)?.session.release();
+      } catch {
+        // The dead session may refuse to release; discard it regardless.
+      }
+      demucsPromise = null;
+    }
+  }
+}
+
 async function separate(
   channels: [Float32Array, Float32Array],
   partials: Map<number, ArrayBuffer>,
@@ -120,7 +169,7 @@ async function separate(
           .set(channels[c].subarray(plan.start, plan.start + plan.copyLength));
       }
       const t0 = performance.now();
-      const raw = await runSegment(demucs, chunkBuf, SEGMENT_SAMPLES);
+      const raw = await runChunkWithRecovery(chunkBuf, chunkTimes, plan.index);
       const ms = performance.now() - t0;
       chunkTimes.push(ms);
       // Quantise once; the accumulator consumes the dequantised values so
@@ -192,7 +241,8 @@ async function separate(
       totalSamples,
       stemRms,
       reconstructionError,
-      ep: demucs.ep,
+      // Recovery may have recreated the session (and possibly changed EP).
+      ep: (await ensureSession()).ep,
       elapsedMs: Math.round(performance.now() - started),
     },
     rows,
