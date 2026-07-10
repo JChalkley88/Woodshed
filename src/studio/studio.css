@@ -1,0 +1,278 @@
+/* Studio desk layout — matched to woodshed-desk-mockup.html, tokens only. */
+.rig {
+  width: 1160px;
+  max-width: 100%;
+  display: flex;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+.cheek {
+  width: 26px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--wood);
+  box-shadow:
+    inset 2px 0 3px rgba(255, 255, 255, 0.08),
+    inset -2px 0 4px rgba(0, 0, 0, 0.6),
+    0 6px 18px rgba(0, 0, 0, 0.7);
+}
+.desk {
+  flex: 1;
+  background: linear-gradient(
+    180deg,
+    var(--panel-hi) 0,
+    var(--panel) 12%,
+    var(--panel) 88%,
+    var(--panel-lo) 100%
+  );
+  border-radius: 4px;
+  margin: 0 3px;
+  position: relative;
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  padding: 18px 22px 26px;
+}
+.screw {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--metal-knob-hi),
+    var(--led-off) 70%
+  );
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.screw::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 5.5px;
+  height: 1.6px;
+  background: var(--chassis);
+  transform: rotate(38deg);
+}
+.screw-tl { top: 8px; left: 8px; }
+.screw-tr { top: 8px; right: 8px; }
+.screw-bl { bottom: 8px; left: 8px; }
+.screw-br { bottom: 8px; right: 8px; }
+
+/* ---------- top rail ---------- */
+.toprail {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.brandplate {
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  padding: 8px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.brandplate-name {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--plate-ink);
+  text-transform: uppercase;
+}
+.brandplate-model {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--stem-vocals);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.tapelabel {
+  flex: 1;
+  align-self: center;
+  background: var(--tape);
+  border-radius: 2px;
+  padding: 7px 14px 5px;
+  transform: rotate(-0.4deg);
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.5),
+    inset 0 0 12px rgba(120, 100, 60, 0.18);
+  border: 1px solid var(--tape-border);
+  cursor: pointer;
+  text-align: left;
+}
+.tapelabel-small {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--engrave-dim);
+  text-transform: uppercase;
+}
+.tapelabel-song {
+  font-family: var(--font-scribble);
+  font-weight: 600;
+  font-size: 24px;
+  color: var(--tape-ink);
+  line-height: 1;
+}
+.clock-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--lcd-past);
+  margin-top: 3px;
+  text-shadow: none;
+}
+
+/* ---------- deck ---------- */
+.deck {
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 12px 14px;
+  box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.85);
+}
+.deck-drop {
+  outline: 1px dashed var(--stem-vocals);
+  outline-offset: -6px;
+}
+.lane {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lane-tag {
+  width: 70px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lane-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--stem-vocals);
+}
+.lane-tag span {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--stem-vocals);
+}
+.lane-wave {
+  flex: 1;
+}
+.deck-message {
+  font-family: var(--font-lcd);
+  color: var(--lcd-dim);
+  font-size: 14px;
+  text-align: center;
+  padding: 18px 0;
+}
+.deck-error {
+  font-family: var(--font-lcd);
+  color: var(--led-red);
+  font-size: 13px;
+  text-align: center;
+  padding: 6px 0 0;
+}
+
+/* ---------- console ---------- */
+.console {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+  align-items: stretch;
+}
+.strip {
+  flex: 1;
+  background: linear-gradient(180deg, var(--strip-hi), var(--strip-lo));
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 12px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+.strip-num {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--engrave-dim);
+}
+.faderbay {
+  display: flex;
+  gap: 9px;
+  align-items: stretch;
+}
+.master {
+  flex: 1.35;
+  background: linear-gradient(180deg, var(--master-hi), var(--master-lo));
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 12px 14px 14px;
+  display: flex;
+  gap: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.mcol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+/* ---------- footer ---------- */
+.desk-footer {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--engrave-faint);
+}
+
+/* Below 1024px the console wraps to two rows (spec section 5). */
+@media (max-width: 1024px) {
+  .console {
+    flex-wrap: wrap;
+  }
+  .master {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+/* Below 768px: desktop-only notice (spec section 5). */
+.small-screen-notice {
+  display: none;
+}
+@media (max-width: 768px) {
+  .rig {
+    display: none;
+  }
+  .small-screen-notice {
+    display: block;
+    max-width: 420px;
+    margin: 80px auto;
+    padding: 24px;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    color: var(--engrave);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+}
