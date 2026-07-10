@@ -1,36 +1,108 @@
-# STATE.md — Night 1 aborted before build start
+# STATE.md — Night 1
 
 **Date:** 10 Jul 2026
-**Status:** STOPPED at pre-flight, per the brief's own instruction. No build work was done.
-
-## Why the run stopped
-
-`NIGHT-1-BRIEF.md` requires four files to be read before starting and says: "If any of files 1 to 4 are missing, stop immediately and write STATE.md explaining what was absent."
-
-File 3, **`woodshed-desk-mockup.html`** (the approved visual reference for the design spec), is not present anywhere in the repository. A full-tree search for `*mockup*` and `*.html` found only `woodshed-reference/index.html`, which is the demucs-onnx browser demo page from the reference scaffold, not the desk mockup.
-
-## Pre-flight inventory
-
-| Required file | Present |
-|---|---|
-| 1. `practice-studio-build-plan.md` | Yes (read in full) |
-| 2. `woodshed-design-spec.md` | Yes (read in full) |
-| 3. `woodshed-desk-mockup.html` | **No — absent, run stopped** |
-| 4. `models/vite-ort-config-reference.txt` | Yes |
-| 5. `woodshed-reference/` (demo.js, index.html, README.md) | Yes |
-
-Also present: `models/htdemucs.onnx` (316 MB, fp32) and `models/htdemucs_fp16weights.onnx` (166 MB, fp16), so the spike is unblocked once the mockup lands. No `/assets/fonts` directory exists yet, so unless the woff2 files are added the build will fall back to system typefaces as the brief permits.
+**Status:** Player and hardware library shipped and green. Separation spike ran the full matrix and produced hard data, but the data is eight recorded failures, not timings. Details, diagnosis, and a firm recommendation below.
 
 ## What shipped
 
-Nothing. No scaffold, no commits, no tests, no spike benchmarks. The working tree contains only the input documents plus this file.
+- Vite + React + TypeScript + Tailwind scaffold with ESLint (flat config), Vitest, Playwright, and npm scripts for dev/build/test/lint/spike. Vite config follows `models/vite-ort-config-reference.txt` with both brief amendments: ONNX sessions request `["webgpu", "wasm"]` in product code, and the ORT runtime (.mjs/.wasm pairs) is served locally from `/ort` with no CDN anywhere. COOP/COEP headers are set on dev and preview servers, mirrored for production in `public/_headers` (Cloudflare Pages needs that file deployed as-is).
+- `tokens.css` with every design-spec section 1 value, plus material greys derived from the approved mockup as named tokens so components contain no hard-coded hex. Typefaces: woff2 files were **not present** in `/assets/fonts`, so the stacks fall back to system faces (Bahnschrift/Arial Narrow, Consolas, Segoe Script); `@font-face` declarations are already wired so dropping the files into `public/assets/fonts/` activates them with no code change.
+- `hardware/` library: Knob, Fader, TempoFader, Button, LEDMeter, LCD (time/readout/loop/chords variants), ScribbleStrip, Transport, built to spec section 4 with drag/wheel/arrow/double-click physics, latching LED buttons, 14-segment meter with attack .25 / release .08 ballistics, stable per-id tape rotation, and SVG transport glyphs (unicode glyphs render as emoji on Windows, which section 10 forbids). Visual QA route at `/hardware` shows every component in every state.
+- Studio desk at `/`: drag-drop and picker loading (mp3/wav/m4a/flac) with friendly decode errors, canvas waveform per spec 4.9 (2px bars at 3px pitch, 2x canvas, playhead moved by transform, amber loop wash), transport with play/pause/seek, A-B loop with markers, keyboard shortcuts (space, L, arrows; arrows adjust the focused control when one is focused), channel strip with fader/mute/live RMS meter, tempo fader driving playback speed.
+- Time-stretch through the official signalsmith-stretch AudioWorklet (MIT): 50 to 120 percent, pitch preserved, with looping done sample-accurately inside the worklet (`loopStart`/`loopEnd`), so loop wrap is seamless at any speed.
+- Spike harness: Web Worker + `/spike` route + `scripts/run-spike.mjs` driving real Chrome, with per-row creation timeouts, heartbeat instrumentation, opt-level retries, and URL-parameter probe overrides.
 
-## Why not proceed anyway
+## Done-means check
 
-The design spec is detailed enough to build the token file and much of the hardware library, but the brief names the mockup as "the approved visual reference; open it, study it, match it" and makes its absence an explicit hard stop. Overriding a hard stop on night 1 of a five-night autonomous chain risks baking in a look that fails the morning review and poisons Nights 2 to 5, so the conservative reading wins.
+Drop in an mp3, loop a section at 75 percent with correct pitch using the hardware controls: **works**, verified by the Playwright acceptance flow and by hand. `/hardware` shows every component in every state: **done**. All tests pass: **63 total, all green**. Spike benchmarks exist for both models on both EPs: **the matrix ran to completion; every row is a recorded failure with a reason** (see below).
 
-## Recommendation for relaunch
+## Commits
 
-1. Drop `woodshed-desk-mockup.html` into the repo root (the design spec dated it 10 Jul 2026, so it should exist somewhere on this machine).
-2. Optionally add the three woff2 faces under `/assets/fonts` (Barlow Semi Condensed 500/600, Caveat 600, Share Tech Mono) to avoid the system-fallback path.
-3. Relaunch the same Night 1 brief unchanged. Everything else needed for the full night, including both ONNX models for the spike, is already in place.
+```
+072ef18 docs: night 1 brief, build plan, design spec, approved mockup, reference demo
+c5fe46e chore: scaffold Vite + React + TS + Tailwind with ESLint, Vitest, Playwright
+f1184bb feat(tokens): design tokens and self-hosted typeface plumbing per spec 1-2
+a7b7b53 feat(hardware): Knob, Fader, TempoFader, Button, LEDMeter, LCD, ScribbleStrip, Transport with /hardware QA route
+185802f feat(engine): single-track practice player with pitch-preserved time-stretch
+ad821ec feat(spike): htdemucs ONNX benchmark harness (fp16/fp32, WebGPU/WASM)
+da7d962 test: engine maths units, hardware render tests, Playwright practice flow
+c0d407f docs: repo README with scripts, routes, and offline notes
+3593672 feat(engine): meter updates drop to 4fps under prefers-reduced-motion
+5ed16c9 fix(spike): bounded, observable benchmark matrix; record all results including DNFs
+(+ this STATE.md as the closing commit)
+```
+
+Note on history: the repo's original `.gitignore` was UTF-16-encoded, which git silently fails to parse; one `git add -A` therefore briefly committed `node_modules`, `dist`, and both model files. The gitignore is now UTF-8, the contaminated tip commit was rewritten before anything was pushed anywhere, and `git ls-files` confirms no model, dependency, or build output is tracked in any commit.
+
+```
+```
+
+## Tests
+
+- **59 Vitest cases** (all passing): engine maths (loop boundaries, wrap, stretch ratios, sample conversions, fader audio taper round-trip, dB-to-gain, meter ballistics, RMS, peak computation, time/dB formatting) and hardware component behaviour (slider semantics, keyboard steps, double-click resets, latching, meter segment colours, LCD variants, scribble editing, transport states).
+- **4 Playwright flows** (all passing): studio smoke, hardware QA coverage, the acceptance flow (load file → play via space → L-L loop → tempo fader to 75% → verify playhead stays inside the loop → pause), and friendly-error handling for unsupported files.
+
+## Spike benchmarks
+
+Machine: Windows 11, Intel Xe-LPG integrated GPU, 14 hardware threads, 16GB RAM, Chrome 150, `crossOriginIsolated: true`, onnxruntime-web **1.27.0**, models served same-origin, ORT runtime local.
+
+Final matrix (fresh worker per row, model passed by URL, session options verbatim from the working reference demo, 120s creation allowance, one retry per row with graph optimisation disabled):
+
+| Run | EP | Opt level | Result |
+|---|---|---|---|
+| fp32-webgpu | WebGPU | all | FAILED — session creation timeout (120s) |
+| fp32-webgpu-optoff | WebGPU | disabled | FAILED — session creation timeout (120s) |
+| fp32-wasm | WASM (4 threads) | all | FAILED — session creation timeout (120s) |
+| fp32-wasm-optoff | WASM (4 threads) | disabled | FAILED — session creation timeout (120s) |
+| fp16-webgpu | WebGPU | all | FAILED — session creation timeout (120s) |
+| fp16-webgpu-optoff | WebGPU | disabled | FAILED — session creation timeout (120s) |
+| fp16-wasm | WASM (4 threads) | all | FAILED — session creation timeout (120s) |
+| fp16-wasm-optoff | WASM (4 threads) | disabled | FAILED — session creation timeout (120s) |
+| fp16-webgpu (earlier run) | WebGPU | all | **DNF — session creation abandoned at 705s+** (heartbeats proved the call alive; hardware adapter present in the worker) |
+| fp16-wasm, bytes-in-memory variant | WASM (1 thread) | all | FAILED in 12s — `std::bad_alloc` (model passed as bytes doubles peak memory; fixed by URL loading, which then times out instead) |
+| PROBE: fp16-wasm, 600s allowance | WASM (4 threads) | disabled | **FAILED — session creation timeout at 600s.** Heartbeats confirmed the call alive for the full ten minutes; it simply never resolves. WASM creation is not "slow but viable" on this stack; it is non-terminating in practice. (`spike/probe-results.json`) |
+
+**No row reached inference**, so chunk timings, memory-during-inference, output sanity, and the 4-minute-song projections the brief asks for **cannot be computed from tonight's data**. The blocker is entirely `InferenceSession.create`: it either exhausts the WASM heap (bytes path), or runs for 705+ seconds without completing (URL path, both EPs, both models, both optimisation levels).
+
+Raw data: `spike/results.json` (final matrix), `spike/dnf-log.md` (run history including the abandoned runs, recorded as results per instruction).
+
+### Diagnosis, as far as tonight got
+
+- The environment is healthy: `crossOriginIsolated` true, hardware WebGPU adapter (`intel / xe-lpg`) visible from both main thread and worker, ORT runtime and models served same-origin with correct MIME types.
+- The failure is model-load-time, not inference-time, and it is not specific to fp16, WebGPU, worker context, thread count, or optimisation level. The extended probe rules out "merely slow": ten uninterrupted minutes of live session creation on WASM never resolved for the 166MB fp16 model.
+- The reference demo (`woodshed-reference/demo.js`) demonstrably runs this exact model family in-browser — on onnxruntime-web **1.18.0**. Tonight ran **1.27.0** (installed fresh). A session-creation regression or behavioural change between those versions is the leading suspect, and the one experiment tonight's timebox did not reach.
+
+## Decisions made and why
+
+1. **Material greys as derived tokens.** The mockup uses metal/plastic gradient values outside the spec section 1 palette. Rather than hard-code hex in components (forbidden) or ignore the approved look, they are named tokens in `tokens.css` under a "materials" comment block.
+2. **SVG transport glyphs.** Unicode transport characters take emoji presentation on Windows; spec section 10 bans emoji. Inline SVGs match the mockup's glyphs deterministically.
+3. **Loop behaviour in the worklet.** signalsmith-stretch supports `loopStart`/`loopEnd` natively, so A-B looping is sample-accurate at any stretch rate instead of being approximated with seek-on-poll from the main thread.
+4. **Pitch knob omitted from the studio** (it appears on `/hardware`): pitch shift is Night 3 scope; a dead control on the desk would violate "controls physically present must work".
+5. **Fader taper is piecewise linear between the spec's scale marks** (+10 to -∞), which is the audio taper real consoles use; double-click returns to unity. Unit-tested round-trip.
+6. **Spike harness hardening over raw benchmarks.** After the first silent 30-minute hang, time went into observability (heartbeats, per-row timeouts, retries, DNF recording) so that failures are data. That is why tonight ends with eight attributable failures instead of one mystery.
+7. **models/*.onnx gitignored, served by dev middleware; ORT runtime copied from node_modules at dev/build time** — nothing heavier than the 1MB test fixture is committed.
+
+## Known issues
+
+- The three spec typefaces are absent; system fallbacks are close but not the contract. Drop the woff2 files into `public/assets/fonts/` (filenames in `src/styles/fonts.css`).
+- Separation is entirely blocked on session creation (above). Nothing user-facing regresses tonight: the studio player never touches ORT.
+- Master section layout has more empty panel than the mockup because only one channel strip exists tonight; resolves naturally when four stem strips land (Night 2/3).
+- `m4a` decode depends on the browser's AAC codecs: fine in branded Chrome/Edge, absent in stock Chromium (affects CI e2e only; the flow test uses WAV).
+- Meter drive stops at exactly the loop boundary pause edge case: pausing precisely as the track ends leaves the last meter level lit for one frame. Cosmetic.
+
+## Recommendation for Night 2
+
+**Call: SWITCH-TO-2-STEM is NOT yet warranted — but GO is not honest either. The right call is a one-hour daylight gate before Night 2 launches, because tonight's blocker looks like a runtime-version problem, not a model-size problem.**
+
+The brief's GO condition (WebGPU chunk time projecting under ~90s for a 4-minute song) cannot be evaluated: no inference ever ran. But the failure signature — session creation that never completes on either EP, either model, either opt level, on a machine with a working adapter — does not match "model too heavy for consumer hardware" (that fails at inference time with slow chunks). It matches a load-path defect, and the working reference demo pins the same model family on onnxruntime-web 1.18.0.
+
+**Daylight gate (roughly an hour, in order):**
+1. `npm install onnxruntime-web@1.18.0` and run `npm run spike`. If session creation completes, the whole question reopens with real timings the same evening; the harness already produces the full table and the projections are one division away.
+2. If 1.18.0 also fails: run the untouched `woodshed-reference/` demo as-is on this machine (its README says `python -m http.server 8080`). If the reference demo also fails to create a session on this machine, no htdemucs ONNX variant ships on this hardware and **SWITCH-TO-2-STEM** (Open-Unmix has a well-supported, much smaller ONNX path) is the firm call for Night 2.
+3. If the reference demo works but our stack on 1.18 does not, diff the remaining deltas (Vite dev serving vs plain static, module worker vs classic) — one of them is the defect and it is fixable inside Night 2.
+
+**Model format: ship fp16 weights** whichever way the gate goes. The fp16 file is half the download (166MB vs 316MB), the reference project measured max abs difference vs fp32 at ~6e-5 (inaudible), and nothing tonight produced evidence against fp16 — both formats failed identically, so weight precision is exonerated as the cause.
+
+**If the gate clears GO**, Night 2 proceeds per plan (chunked full-song separation with overlap-add, progress UI, IndexedDB cache) with one addition from tonight's learnings: session creation must happen once, off the critical path, with its own progress message ("WARMING UP THE SEPARATOR"), because even a healthy create of a 166MB model will take tens of seconds on modest hardware.
+
+**If the gate fails to 2-stem**, Night 2 swaps the model and keeps everything else: the worker protocol, chunking maths, progress UI, and cache design in the plan are model-agnostic; stem strips become 2 instead of 4 until a workable 4-stem path exists.
