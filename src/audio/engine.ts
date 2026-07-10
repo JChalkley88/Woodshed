@@ -183,7 +183,11 @@ export class PracticeEngine {
   private nextMeterLevel(): number {
     if (!this.analyser || !this.meterBlock) return 0;
     const now = performance.now();
-    if (now - this.lastMeterTime < 25) return this.state.level;
+    // Spec section 6: ~30fps meters, dropped to 4fps under reduced motion.
+    const interval = matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 250
+      : 25;
+    if (now - this.lastMeterTime < interval) return this.state.level;
     this.lastMeterTime = now;
     this.analyser.getFloatTimeDomainData(this.meterBlock);
     // Scale RMS so a full-scale sine reads near the top of the meter.
