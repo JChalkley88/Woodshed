@@ -3,14 +3,16 @@ import { expect, test } from "@playwright/test";
 // The Night 1 acceptance flow: load a file, play, set an A-B loop, change
 // speed with the tempo fader, and confirm playback keeps running.
 test("load, play, loop, and slow to 75 percent", async ({ page }) => {
-  await page.goto("/");
+  // Mocked separation keeps this flow deterministic; the real pipeline has
+  // its own spec (separation.spec.ts, integration.spec.ts).
+  await page.goto("/?mockSeparation=1");
 
   // Load the fixture through the hidden picker input.
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");
   await expect(page.getByTestId("song-label")).toHaveText("test-tone.wav");
-  await expect(page.getByTestId("waveform-lane")).toBeVisible();
+  await expect(page.getByTestId("waveform-lane").first()).toBeVisible();
   await expect(page.getByTestId("time-readout")).toHaveText("00:00.0");
 
   // Play with the space bar; the clock must advance.
@@ -27,7 +29,7 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
   await page.waitForTimeout(1200);
   await page.keyboard.press("KeyL");
   await expect(page.getByTestId("loop-readout")).toContainText("OUT 00:");
-  await expect(page.getByTestId("loop-region")).toBeVisible();
+  await expect(page.getByTestId("loop-region").first()).toBeVisible();
   await expect(page.getByTestId("loop-lamp")).toHaveClass(/hw-looplamp-on/);
 
   // Slow to 75% with the tempo fader (Home = 50%, then 25 steps up).
@@ -57,8 +59,9 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
   const nowSeconds = Number(nowMatch[1]) * 60 + Number(nowMatch[2]);
   expect(nowSeconds).toBeLessThanOrEqual(outSeconds + 0.5);
 
-  // Space pauses.
+  // Space pauses. Let the final position tick land before capturing.
   await page.keyboard.press("Space");
+  await page.waitForTimeout(400);
   const paused = await page.getByTestId("time-readout").textContent();
   await page.waitForTimeout(700);
   expect(await page.getByTestId("time-readout").textContent()).toBe(paused);
