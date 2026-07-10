@@ -1,0 +1,6 @@
+# Cloudflare Pages headers. COOP/COEP are required for SharedArrayBuffer,
+# which the multithreaded ONNX Runtime WASM execution provider depends on.
+# These mirror the dev-server headers in vite.config.ts.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
