@@ -1,0 +1,388 @@
+/* Woodshed hardware component library — design spec section 4, matched to
+   woodshed-desk-mockup.html. Colour comes only from tokens.css custom
+   properties; the rgba() values below are shadows and catchlights, which the
+   spec's materials section defines directly. */
+
+/* ---------------- 4.1 Knob ---------------- */
+.hw-knob-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.hw-knob {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 32% 28%,
+    var(--metal-knob-hi),
+    var(--metal-knob-lo) 68%
+  );
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  cursor: ns-resize;
+  touch-action: none;
+}
+.hw-knob:focus-visible {
+  outline: none;
+}
+.hw-knob:focus-visible .hw-knob-skirt {
+  box-shadow: 0 0 0 1px var(--stem-vocals);
+  border-radius: 50%;
+}
+.hw-knob-ind {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 2.5px;
+  height: 15px;
+  margin-left: -1.25px;
+  background: var(--indicator);
+  border-radius: 1px;
+  transform-origin: 50% 22px;
+  pointer-events: none;
+}
+.hw-knob-skirt {
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.hw-knob-tick {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 4px;
+  background: var(--tick);
+  transform-origin: 50% 35px;
+  margin-left: -0.5px;
+}
+
+/* ---------------- 4.2 Fader / 4.3 Tempo fader ---------------- */
+.hw-fader {
+  display: flex;
+  gap: 9px;
+  align-items: stretch;
+}
+.hw-fader-scale {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 8px;
+  color: var(--engrave-dim);
+  text-align: right;
+  padding: 2px 0;
+  user-select: none;
+}
+.hw-fader-slot {
+  position: relative;
+  width: 9px;
+  background: var(--slot-face);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px var(--slot-edge);
+  cursor: ns-resize;
+  touch-action: none;
+}
+.hw-fader-slot:focus-visible {
+  outline: 1px solid var(--stem-vocals);
+  outline-offset: 2px;
+}
+.hw-fader-cap {
+  position: absolute;
+  left: 50%;
+  width: 30px;
+  height: 44px;
+  margin-left: -15px;
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--metal-cap-1) 0,
+    var(--metal-cap-2) 45%,
+    var(--metal-cap-3) 55%,
+    var(--metal-cap-4) 100%
+  );
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+.hw-fader-cap::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--well);
+  border-radius: 1px;
+}
+/* Tempo variant: longer throw, wider shallower cap, amber scored line. */
+.hw-fader-tempo .hw-fader-cap {
+  width: 40px;
+  height: 30px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--metal-cap-1), var(--metal-cap-2));
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.hw-fader-tempo .hw-fader-cap::after {
+  height: 2.5px;
+  margin-top: -1.25px;
+  background: var(--stem-vocals);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--stem-vocals) 70%, transparent);
+}
+.hw-fader-zero {
+  position: absolute;
+  left: -7px;
+  right: -7px;
+  height: 1px;
+  background: var(--tick);
+  pointer-events: none;
+}
+
+/* ---------------- 4.4 Button ---------------- */
+.hw-btn {
+  width: 34px;
+  height: 26px;
+  border-radius: 2px;
+  border: 1px solid var(--edge);
+  position: relative;
+  background: linear-gradient(180deg, var(--metal-btn-hi), var(--metal-btn-lo));
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  font-family: var(--font-panel);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--engrave);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 3px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 80ms, box-shadow 80ms;
+}
+.hw-btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.hw-btn-led {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  margin-left: -3px;
+  width: 6px;
+  height: 3.5px;
+  border-radius: 1px;
+  background: var(--led-off);
+}
+.hw-btn-on.hw-btn-red {
+  background: linear-gradient(
+    180deg,
+    var(--metal-btn-mute-hi),
+    var(--metal-btn-mute-lo)
+  );
+}
+.hw-btn-on.hw-btn-red .hw-btn-led {
+  background: var(--led-red);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--led-red) 80%, transparent);
+}
+.hw-btn-on.hw-btn-amber .hw-btn-led {
+  background: var(--led-amber);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--led-amber) 80%, transparent);
+}
+
+/* ---------------- 4.5 LED meter ---------------- */
+.hw-meter {
+  width: 11px;
+  background: var(--slot-face);
+  border-radius: 2px;
+  padding: 3px 2px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+.hw-seg {
+  height: 7px;
+  border-radius: 1px;
+  background: var(--led-off);
+}
+.hw-seg-green {
+  background: var(--led-green);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--led-green) 45%, transparent);
+}
+.hw-seg-amber {
+  background: var(--led-amber);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--led-amber) 50%, transparent);
+}
+.hw-seg-red {
+  background: var(--led-red);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--led-red) 60%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hw-seg-green,
+  .hw-seg-amber,
+  .hw-seg-red {
+    box-shadow: none;
+  }
+}
+
+/* ---------------- 4.6 LCD ---------------- */
+.hw-lcd {
+  background: var(--lcd-bg);
+  border: 2px solid var(--slot-face);
+  border-radius: 3px;
+  padding: 5px 10px;
+  font-family: var(--font-lcd);
+  color: var(--lcd-fg);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.85);
+  text-shadow: var(--lcd-glow);
+  text-align: center;
+}
+.hw-lcd-time {
+  font-size: 30px;
+  line-height: 1;
+  padding: 6px 18px;
+}
+.hw-lcd-readout {
+  font-size: 14px;
+}
+.hw-lcd-loop {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.hw-lcd-chords {
+  display: flex;
+  gap: 6px;
+  padding: 5px 8px;
+  border-width: 1px;
+  border-radius: 2px;
+}
+.hw-chord {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+  color: var(--lcd-dim);
+  padding: 3px 0;
+  text-shadow: none;
+}
+.hw-chord-past {
+  color: var(--lcd-past);
+}
+.hw-chord-now {
+  color: var(--lcd-fg);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--lcd-fg) 70%, transparent);
+  border: 1px solid var(--lcd-outline);
+  border-radius: 2px;
+}
+
+/* ---------------- 4.7 Scribble strip ---------------- */
+.hw-scrib {
+  width: 100%;
+  background: var(--tape);
+  border-radius: 1px;
+  padding: 2px 6px 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--tape-border);
+  text-align: center;
+  cursor: text;
+}
+.hw-scrib span,
+.hw-scrib input {
+  font-family: var(--font-scribble);
+  font-weight: 600;
+  font-size: 19px;
+  color: var(--tape-ink);
+  line-height: 1.1;
+}
+.hw-scrib input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  text-align: center;
+  padding: 0;
+}
+
+/* ---------------- 4.8 Transport ---------------- */
+.hw-transport {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.hw-tbtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  position: relative;
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--metal-tbtn-hi),
+    var(--metal-tbtn-lo) 70%
+  );
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--engrave);
+  cursor: pointer;
+  transition: transform 80ms, box-shadow 80ms;
+}
+.hw-tbtn:active {
+  transform: translateY(1px);
+}
+.hw-tbtn-play {
+  width: 56px;
+  height: 56px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--metal-play-hi),
+    var(--metal-play-lo) 75%
+  );
+  color: var(--metal-play-ink);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.7),
+    0 0 18px color-mix(in srgb, var(--stem-vocals) 25%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.hw-tbtn-loop-on {
+  color: var(--led-amber);
+}
+.hw-looplamp {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--led-off);
+}
+.hw-looplamp-on {
+  background: var(--led-amber);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--led-amber) 90%, transparent);
+  animation: hw-loop-blink 1.6s steps(1) infinite;
+}
+@keyframes hw-loop-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hw-looplamp-on {
+    animation: none;
+  }
+}
