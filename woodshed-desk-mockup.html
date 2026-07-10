@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Woodshed W-4S — practice console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600&family=Caveat:wght@600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --panel:#232427; --panel-hi:#2C2D31; --panel-lo:#18191B; --well:#101113;
+    --engrave:#9A9B96; --engrave-dim:#6B6C68;
+    --amber:#E8A33D; --red:#D85A5A; --violet:#9B8CE8; --teal:#4FB8A0;
+    --led-g:#6FE08E; --led-a:#E8C34D; --led-r:#E24B4A;
+    --lcd-bg:#0C1810; --lcd-fg:#7CE08A; --lcd-dim:#1E3A26;
+    --tape:#E9E4D8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:#0B0B0C url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%230B0B0C"/><circle cx="20" cy="30" r="0.6" fill="%23141416"/><circle cx="60" cy="70" r="0.5" fill="%23131315"/><circle cx="45" cy="12" r="0.5" fill="%23121214"/></svg>');
+    font-family:'Barlow Semi Condensed',sans-serif; color:var(--engrave);
+    display:flex; justify-content:center; padding:40px 16px; min-height:100vh;
+  }
+  .rig{width:1160px; max-width:100%; display:flex;}
+  .cheek{
+    width:26px; flex:none; border-radius:6px;
+    background:repeating-linear-gradient(175deg,#4A3220 0 3px,#3D2917 3px 5px,#553B25 5px 9px);
+    box-shadow:inset 2px 0 3px rgba(255,255,255,0.08), inset -2px 0 4px rgba(0,0,0,0.6), 0 6px 18px rgba(0,0,0,0.7);
+  }
+  .desk{
+    flex:1; background:linear-gradient(180deg,var(--panel-hi) 0,var(--panel) 12%,var(--panel) 88%,var(--panel-lo) 100%);
+    border-radius:4px; margin:0 3px; position:relative;
+    box-shadow:0 14px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.07);
+    padding:18px 22px 26px;
+  }
+  .screw{position:absolute; width:13px; height:13px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#4A4B4F,#1B1C1E 70%);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.06);}
+  .screw::after{content:''; position:absolute; left:2px; right:2px; top:5.5px; height:1.6px; background:#0A0A0B; transform:rotate(38deg);}
+  .screw.tl{top:8px; left:8px;} .screw.tr{top:8px; right:8px;}
+  .screw.bl{bottom:8px; left:8px;} .screw.br{bottom:8px; right:8px;}
+
+  .label{font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:var(--engrave-dim); font-weight:500;}
+
+  /* ---------- top rail ---------- */
+  .toprail{display:flex; align-items:stretch; gap:16px; margin-bottom:16px;}
+  .brandplate{
+    background:linear-gradient(180deg,#2E2F33,#202124); border:1px solid #0E0F10; border-radius:3px;
+    padding:8px 16px; box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .brandplate .name{font-size:21px; font-weight:600; letter-spacing:0.32em; color:#D8D9D4; text-transform:uppercase;}
+  .brandplate .model{font-size:10px; letter-spacing:0.24em; color:var(--amber); text-transform:uppercase; margin-top:2px;}
+  .tapelabel{
+    flex:1; align-self:center; background:var(--tape); border-radius:2px; padding:7px 14px 5px;
+    transform:rotate(-0.4deg); box-shadow:0 2px 5px rgba(0,0,0,0.5), inset 0 0 12px rgba(120,100,60,0.18);
+    border:1px solid #C9C2B0;
+  }
+  .tapelabel .small{font-size:9px; letter-spacing:0.2em; color:#8A8272; text-transform:uppercase;}
+  .tapelabel .song{font-family:'Caveat',cursive; font-size:24px; color:#3A342A; line-height:1;}
+  .clock{
+    background:var(--lcd-bg); border:2px solid #0A0A0B; border-radius:3px; padding:6px 18px;
+    box-shadow:inset 0 2px 8px rgba(0,0,0,0.85); display:flex; flex-direction:column; justify-content:center; align-items:flex-end;
+  }
+  .clock .t{font-family:'Share Tech Mono',monospace; font-size:30px; color:var(--lcd-fg); text-shadow:0 0 9px rgba(124,224,138,0.55); line-height:1;}
+  .clock .label{color:#3E5A46; margin-top:3px;}
+
+  /* ---------- tape deck / lanes ---------- */
+  .deck{
+    background:var(--well); border:1px solid #0A0A0B; border-radius:4px; padding:12px 14px;
+    box-shadow:inset 0 3px 12px rgba(0,0,0,0.85);
+  }
+  .chordrow{display:flex; gap:8px; align-items:center; margin-bottom:10px;}
+  .chordrow .label{width:70px; flex:none;}
+  .chords{flex:1; background:var(--lcd-bg); border:1px solid #060B07; border-radius:2px; padding:5px 8px;
+    display:flex; gap:6px; box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);}
+  .chord{flex:1; text-align:center; font-family:'Share Tech Mono',monospace; font-size:15px; color:var(--lcd-dim); padding:3px 0;}
+  .chord.past{color:#3E6B4A;}
+  .chord.now{color:var(--lcd-fg); text-shadow:0 0 10px rgba(124,224,138,0.7); border:1px solid #2A4A33; border-radius:2px;}
+  .lane{display:flex; gap:8px; align-items:center; margin-bottom:7px;}
+  .lane:last-child{margin-bottom:0;}
+  .lane .tag{width:70px; flex:none; display:flex; align-items:center; gap:6px;}
+  .lane .dot{width:8px; height:8px; border-radius:50%; flex:none;}
+  .lane .tag span{font-size:11px; letter-spacing:0.14em; text-transform:uppercase; font-weight:500;}
+  .wavewrap{flex:1; position:relative; height:52px; background:#0B0C0E; border:1px solid #08090A; border-radius:2px; overflow:hidden;}
+  canvas{display:block; width:100%; height:100%;}
+  .loopshade{position:absolute; top:0; bottom:0; background:rgba(232,163,61,0.09); border-left:1px solid rgba(232,163,61,0.85); border-right:1px solid rgba(232,163,61,0.85); pointer-events:none;}
+  .playhead{position:absolute; top:0; bottom:0; width:1.5px; background:#F2F2EE; box-shadow:0 0 6px rgba(255,255,255,0.5); pointer-events:none;}
+
+  /* ---------- console ---------- */
+  .console{display:flex; gap:14px; margin-top:18px; align-items:stretch;}
+  .strip{
+    flex:1; background:linear-gradient(180deg,#28292D,#1E1F22); border:1px solid #0D0E10; border-radius:4px;
+    padding:12px 10px 14px; display:flex; flex-direction:column; align-items:center; gap:10px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -6px 12px rgba(0,0,0,0.35);
+  }
+  .strip .num{font-size:10px; letter-spacing:0.2em; color:var(--engrave-dim);}
+  .knob{position:relative; width:52px; height:52px; border-radius:50%;
+    background:radial-gradient(circle at 32% 28%,#3C3D42,#161719 68%);
+    box-shadow:0 3px 7px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.15);}
+  .knob .ind{position:absolute; left:50%; top:4px; width:2.5px; height:15px; margin-left:-1.25px; background:#E6E6E1; border-radius:1px; transform-origin:50% 22px;}
+  .knob .skirt{position:absolute; inset:-9px; border-radius:50%; pointer-events:none;}
+  .knob .tick{position:absolute; left:50%; top:0; width:1px; height:4px; background:#55565A; transform-origin:50% 35px; margin-left:-0.5px;}
+  .btnrow{display:flex; gap:8px;}
+  .sq{width:34px; height:26px; border-radius:2px; border:1px solid #0B0C0D; position:relative;
+    background:linear-gradient(180deg,#37383D,#232428); box-shadow:0 2px 4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+    font-size:9px; letter-spacing:0.1em; color:#8E8F8A; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-weight:500;}
+  .sq .led{position:absolute; top:4px; left:50%; margin-left:-3px; width:6px; height:3.5px; border-radius:1px; background:#2A2B2E;}
+  .sq.on-m{background:linear-gradient(180deg,#2E2426,#1F1719);}
+  .sq.on-m .led{background:var(--led-r); box-shadow:0 0 7px rgba(226,75,74,0.8);}
+  .sq.on-s .led{background:var(--led-a); box-shadow:0 0 7px rgba(232,195,77,0.8);}
+  .faderbay{display:flex; gap:9px; align-items:stretch; height:190px;}
+  .scale{display:flex; flex-direction:column; justify-content:space-between; font-size:8px; color:#5C5D59; text-align:right; padding:2px 0;}
+  .slot{position:relative; width:9px; background:#0A0B0C; border-radius:4px; box-shadow:inset 0 2px 6px rgba(0,0,0,0.95), inset 0 0 0 1px #050506;}
+  .cap{position:absolute; left:50%; width:30px; height:44px; margin-left:-15px; border-radius:3px;
+    background:linear-gradient(180deg,#4A4B50 0,#2A2B2F 45%,#232428 55%,#3A3B40 100%);
+    box-shadow:0 3px 8px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.2);}
+  .cap::after{content:''; position:absolute; left:3px; right:3px; top:50%; height:2px; margin-top:-1px; background:#101113; border-radius:1px;}
+  .meter{width:11px; background:#0A0B0C; border-radius:2px; padding:3px 2px; display:flex; flex-direction:column-reverse; gap:2px; box-shadow:inset 0 1px 4px rgba(0,0,0,0.9);}
+  .seg{height:7px; border-radius:1px; background:#1C1D1F;}
+  .scrib{width:100%; background:var(--tape); border-radius:1px; padding:2px 6px 0; transform:rotate(0.5deg);
+    box-shadow:0 1px 3px rgba(0,0,0,0.5); border:1px solid #C9C2B0; text-align:center;}
+  .scrib span{font-family:'Caveat',cursive; font-size:19px; color:#3A342A; line-height:1.1;}
+
+  /* ---------- master ---------- */
+  .master{flex:1.35; background:linear-gradient(180deg,#2B2C30,#202124); border:1px solid #0D0E10; border-radius:4px;
+    padding:12px 14px 14px; display:flex; gap:16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);}
+  .mcol{display:flex; flex-direction:column; align-items:center; gap:10px; flex:1;}
+  .tempo-slot{position:relative; width:11px; height:230px; background:#0A0B0C; border-radius:4px; box-shadow:inset 0 2px 6px rgba(0,0,0,0.95);}
+  .tempo-slot .zero{position:absolute; left:-7px; right:-7px; height:1px; background:#55565A; top:28.5%;}
+  .tempo-cap{position:absolute; left:50%; width:40px; height:30px; margin-left:-20px; border-radius:2px;
+    background:linear-gradient(180deg,#4A4B50,#26272B); box-shadow:0 3px 8px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.2);}
+  .tempo-cap::after{content:''; position:absolute; left:3px; right:3px; top:50%; height:2.5px; margin-top:-1.25px; background:var(--amber); border-radius:1px; box-shadow:0 0 6px rgba(232,163,61,0.7);}
+  .tscale{display:flex; flex-direction:column; justify-content:space-between; height:230px; font-size:8px; color:#5C5D59; text-align:right;}
+  .lcd{background:var(--lcd-bg); border:1px solid #060B07; border-radius:2px; padding:5px 10px;
+    font-family:'Share Tech Mono',monospace; color:var(--lcd-fg); font-size:14px;
+    box-shadow:inset 0 2px 6px rgba(0,0,0,0.8); text-shadow:0 0 7px rgba(124,224,138,0.5); text-align:center;}
+  .transport{display:flex; gap:10px; align-items:center; margin-top:auto;}
+  .tbtn{width:44px; height:44px; border-radius:50%; border:1px solid #0B0C0D; position:relative;
+    background:radial-gradient(circle at 35% 30%,#3E3F44,#1E1F22 70%);
+    box-shadow:0 3px 8px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.12);
+    display:flex; align-items:center; justify-content:center; color:#B9BAB4; font-size:13px;}
+  .tbtn.play{width:56px; height:56px; background:radial-gradient(circle at 35% 30%,#F0B95E,#B9791E 75%); color:#2A1D06; font-size:18px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.7), 0 0 18px rgba(232,163,61,0.25), inset 0 1px 0 rgba(255,255,255,0.35);}
+  .looplamp{width:7px; height:7px; border-radius:50%; background:var(--led-a); box-shadow:0 0 8px rgba(232,195,77,0.9); animation:blink 1.6s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0.25;}}
+  @media (prefers-reduced-motion:reduce){ .looplamp{animation:none;} }
+  .footer{margin-top:14px; display:flex; justify-content:space-between; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#4F504C;}
+</style>
+</head>
+<body>
+<div class="rig">
+  <div class="cheek"></div>
+  <div class="desk">
+    <div class="screw tl"></div><div class="screw tr"></div><div class="screw bl"></div><div class="screw br"></div>
+
+    <div class="toprail">
+      <div class="brandplate">
+        <div class="name">Woodshed</div>
+        <div class="model">W-4S practice console</div>
+      </div>
+      <div class="tapelabel">
+        <div class="small">Now loaded</div>
+        <div class="song">riverside demo (1994 master).mp3 &nbsp;—&nbsp; learn the bass part</div>
+      </div>
+      <div class="clock">
+        <div class="t" id="clock">01:42.6</div>
+        <div class="label">Elapsed / 04:19</div>
+      </div>
+    </div>
+
+    <div class="deck">
+      <div class="chordrow">
+        <div class="label">Chords</div>
+        <div class="chords">
+          <div class="chord past">Dm</div><div class="chord past">Dm7</div><div class="chord past">G</div>
+          <div class="chord now">A7</div><div class="chord">Dm</div><div class="chord">Bb</div><div class="chord">C</div><div class="chord">Dm</div>
+        </div>
+      </div>
+      <div id="lanes"></div>
+    </div>
+
+    <div class="console" id="console"></div>
+
+    <div class="footer">
+      <span>All processing on this device — nothing uploaded</span>
+      <span>Wantage · Oxfordshire · Serial 0001</span>
+    </div>
+  </div>
+  <div class="cheek"></div>
+</div>
+
+<script>
+const STEMS=[
+ {name:"Vocals", col:"#E8A33D", seed:7,  vol:0.72, mute:false, note:"vox"},
+ {name:"Drums",  col:"#D85A5A", seed:13, vol:0.85, mute:false, note:"kit"},
+ {name:"Bass",   col:"#9B8CE8", seed:29, vol:1.00, mute:false, note:"learn this!"},
+ {name:"Other",  col:"#4FB8A0", seed:41, vol:0.55, mute:true,  note:"gtr + keys"}
+];
+const LOOP={start:0.34, end:0.58};
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* lanes */
+const lanes=document.getElementById('lanes');
+STEMS.forEach((s,i)=>{
+  const lane=document.createElement('div'); lane.className='lane';
+  lane.innerHTML='<div class="tag"><div class="dot" style="background:'+s.col+'"></div>'
+   +'<span style="color:'+(s.mute?'#55564F':s.col)+'">'+s.name+'</span></div>'
+   +'<div class="wavewrap"><canvas></canvas>'
+   +'<div class="loopshade" style="left:'+(LOOP.start*100)+'%; width:'+((LOOP.end-LOOP.start)*100)+'%"></div>'
+   +'<div class="playhead" data-ph></div></div>';
+  lanes.appendChild(lane);
+  const cv=lane.querySelector('canvas');
+  requestAnimationFrame(()=>drawWave(cv,s));
+});
+function drawWave(cv,s){
+  const w=cv.clientWidth, h=cv.clientHeight; cv.width=w*2; cv.height=h*2;
+  const ctx=cv.getContext('2d'); ctx.scale(2,2);
+  let r=s.seed;
+  const rnd=()=>{r=(r*16807)%2147483647; return r/2147483647;};
+  const n=Math.floor(w/3);
+  for(let b=0;b<n;b++){
+    const x=b*3, t=b/n;
+    const env=0.35+0.65*Math.abs(Math.sin(t*9+s.seed))*(0.5+0.5*Math.sin(t*2.2+s.seed*3));
+    const amp=(3+rnd()*(h*0.46))*env;
+    const inLoop=t>=LOOP.start&&t<=LOOP.end;
+    ctx.fillStyle=s.col;
+    ctx.globalAlpha=s.mute?0.16:(inLoop?0.95:0.45);
+    ctx.fillRect(x,h/2-amp,2,amp*2);
+  }
+}
+
+/* console strips */
+const cons=document.getElementById('console');
+const dbScale=['+10','+5','0','-5','-10','-20','-40','-∞'];
+STEMS.forEach((s,i)=>{
+  const st=document.createElement('div'); st.className='strip';
+  const faderTop=8+(1-s.vol)*120;
+  st.innerHTML=
+   '<div class="num">CH '+(i+1)+'</div>'
+   +knob(0)
+   +'<div class="label">Gain</div>'
+   +'<div class="btnrow">'
+   +'<div class="sq'+(s.mute?' on-m':'')+'"><div class="led"></div>MUTE</div>'
+   +'<div class="sq"><div class="led"></div>SOLO</div></div>'
+   +'<div class="faderbay">'
+   +'<div class="scale">'+dbScale.map(d=>'<span>'+d+'</span>').join('')+'</div>'
+   +'<div class="slot"><div class="cap" style="top:'+faderTop+'px"></div></div>'
+   +'<div class="meter" data-meter="'+i+'">'+'<div class="seg"></div>'.repeat(14)+'</div>'
+   +'</div>'
+   +'<div class="scrib" style="transform:rotate('+((i%2?1:-1)*0.8)+'deg)"><span>'+s.note+'</span></div>';
+  cons.appendChild(st);
+});
+function knob(angle){
+  let ticks='';
+  for(let a=-135;a<=135;a+=27){ticks+='<div class="tick" style="transform:rotate('+a+'deg) translateY(-6px)"></div>';}
+  return '<div class="knob"><div class="skirt">'+ticks+'</div><div class="ind" style="transform:rotate('+angle+'deg)"></div></div>';
+}
+
+/* master section */
+const master=document.createElement('div'); master.className='master';
+const tempoPct=75, tMin=50,tMax=120;
+const tempoTop=(1-(tempoPct-tMin)/(tMax-tMin))*200;
+master.innerHTML=
+ '<div class="mcol" style="flex:0.9">'
+ +'<div class="label">Tempo</div>'
+ +'<div style="display:flex; gap:8px;">'
+ +'<div class="tscale"><span>120</span><span>110</span><span>100</span><span>90</span><span>80</span><span>70</span><span>60</span><span>50</span></div>'
+ +'<div class="tempo-slot"><div class="zero"></div><div class="tempo-cap" style="top:'+tempoTop+'px"></div></div>'
+ +'</div>'
+ +'<div class="lcd">75%</div>'
+ +'</div>'
+ +'<div class="mcol">'
+ +'<div class="label">Pitch</div>'+knob(0)+'<div class="lcd">0 st</div>'
+ +'<div class="label" style="margin-top:6px">Loop</div>'
+ +'<div class="lcd" style="font-size:12px">IN 01:28.4<br>OUT 01:56.2</div>'
+ +'<div class="transport">'
+ +'<div class="tbtn">&#9198;</div>'
+ +'<div class="tbtn play">&#9654;</div>'
+ +'<div class="tbtn" style="color:#E8C34D">&#8635;</div>'
+ +'<div class="looplamp"></div>'
+ +'</div></div>';
+cons.appendChild(master);
+
+/* animation: meters + playhead + clock */
+const meters=[...document.querySelectorAll('[data-meter]')];
+const heads=[...document.querySelectorAll('[data-ph]')];
+const clock=document.getElementById('clock');
+let pos=LOOP.start+0.35*(LOOP.end-LOOP.start);
+let levels=STEMS.map(()=>0.5);
+function frame(){
+  pos+=0.00035; if(pos>LOOP.end)pos=LOOP.start;
+  heads.forEach(h=>h.style.left=(pos*100)+'%');
+  const secs=pos*259;
+  const m=String(Math.floor(secs/60)).padStart(2,'0');
+  const s2=(secs%60).toFixed(1).padStart(4,'0');
+  clock.textContent=m+':'+s2;
+  meters.forEach((mt,i)=>{
+    const stem=STEMS[i];
+    let target=stem.mute?0:0.35+0.6*Math.random()*stem.vol;
+    levels[i]+=(target-levels[i])*0.25;
+    const lit=Math.round(levels[i]*14);
+    [...mt.children].forEach((seg,j)=>{
+      if(j<lit){seg.style.background=j>11?'var(--led-r)':j>8?'var(--led-a)':'var(--led-g)';
+        seg.style.boxShadow='0 0 5px '+(j>11?'rgba(226,75,74,0.6)':j>8?'rgba(232,195,77,0.5)':'rgba(111,224,142,0.45)');}
+      else{seg.style.background='#1C1D1F'; seg.style.boxShadow='none';}
+    });
+  });
+  if(!reduced)requestAnimationFrame(frame);
+}
+if(reduced){pos=LOOP.start+0.35*(LOOP.end-LOOP.start); frame();}
+else requestAnimationFrame(frame);
+</script>
+</body>
+</html>
