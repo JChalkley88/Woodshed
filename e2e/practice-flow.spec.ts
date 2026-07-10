@@ -41,10 +41,14 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
 
   // Still playing at the slower speed, and the loop holds the playhead
   // inside its region.
+  // Poll rather than compare two instants: with a short loop the playhead
+  // can wrap back to the same formatted position at a single sample point.
   const t1 = await page.getByTestId("time-readout").textContent();
-  await page.waitForTimeout(1500);
-  const t2 = await page.getByTestId("time-readout").textContent();
-  expect(t2).not.toBe(t1);
+  await expect
+    .poll(async () => page.getByTestId("time-readout").textContent(), {
+      timeout: 5000,
+    })
+    .not.toBe(t1);
   const loopText = await page.getByTestId("loop-readout").textContent();
   const out = loopText!.match(/OUT (\d+):(\d+\.\d)/)!;
   const outSeconds = Number(out[1]) * 60 + Number(out[2]);
