@@ -9,7 +9,6 @@ import * as ort from "onnxruntime-web";
 // from /ort (copied out of node_modules by vite.config.ts), never a CDN, so
 // everything works offline.
 ort.env.wasm.wasmPaths = "/ort/";
-ort.env.wasm.numThreads = Math.min(navigator.hardwareConcurrency ?? 4, 8);
 
 const SAMPLE_RATE = 44100; // demucs ONNX graph is hard-bound to 44.1kHz
 // Canonical demucs segment from the reference demo: 7.8s = 343,980 samples.
@@ -19,12 +18,23 @@ const REFERENCE_SEGMENT = 343980;
 const TEN_SECONDS = 10 * SAMPLE_RATE;
 const N_CHANNELS = 2;
 const N_STEMS = 4;
-const ITERATIONS = 3;
+const ITERATIONS = 2;
+/** Session creation gets two minutes; a create that needs longer is a DNF
+ *  result for that row, not a reason to block the rest of the matrix. */
+const CREATE_TIMEOUT_MS = 120_000;
 
 export interface SpikeRequest {
   label: string;
   modelUrl: string;
   eps: ("webgpu" | "wasm")[];
+  /** WASM EP thread count. Default matches woodshed-reference/demo.js:
+   *  min(hardwareConcurrency, 4). */
+  numThreads?: number;
+  /** Default "all", matching demo.js; rows are retried with "disabled" by
+   *  the page when creation fails. */
+  graphOptimizationLevel?: "all" | "basic" | "extended" | "disabled";
+  /** Session creation allowance override (extended probes). */
+  createTimeoutMs?: number;
 }
 
 export interface SpikeResult {
@@ -99,7 +109,18 @@ async function runOnce(
   const outputName = session.outputNames[0];
   const tensor = new ort.Tensor("float32", chunk, [1, N_CHANNELS, samples]);
   const t0 = performance.now();
-  const result = await session.run({ [inputName]: tensor });
+  const heartbeat = setInterval(() => {
+    post(
+      "progress",
+      `  ...inference running, ${Math.round((performance.now() - t0) / 1000)}s`,
+    );
+  }, 20000);
+  let result: ort.InferenceSession.OnnxValueMapType;
+  try {
+    result = await session.run({ [inputName]: tensor });
+  } finally {
+    clearInterval(heartbeat);
+  }
   const ms = performance.now() - t0;
   return { ms, output: result[outputName] };
 }
@@ -154,19 +175,59 @@ async function runSpike(req: SpikeRequest): Promise<SpikeResult> {
   };
   try {
     result.heapUsedBeforeMB = heapMB();
-    post("progress", `${req.label}: fetching model...`);
-    const tFetch = performance.now();
-    const modelBytes = new Uint8Array(
-      await (await fetch(req.modelUrl)).arrayBuffer(),
+    // Verbatim from woodshed-reference/demo.js, which is known to work
+    // in-browser with an fp16 model.
+    ort.env.wasm.numThreads =
+      req.numThreads ?? Math.min(navigator.hardwareConcurrency ?? 2, 4);
+    post(
+      "progress",
+      `${req.label}: worker up. threads=${ort.env.wasm.numThreads}, crossOriginIsolated=${self.crossOriginIsolated}`,
     );
-    result.modelFetchMs = Math.round(performance.now() - tFetch);
-
-    post("progress", `${req.label}: creating session (${req.eps.join(",")})...`);
+    if (req.eps.includes("webgpu")) {
+      const adapter = navigator.gpu
+        ? await navigator.gpu.requestAdapter()
+        : null;
+      post(
+        "progress",
+        `${req.label}: worker webgpu adapter = ${adapter ? `${adapter.info.vendor} ${adapter.info.architecture}` : "NONE"}`,
+      );
+    }
+    const optLevel = req.graphOptimizationLevel ?? "all";
+    post(
+      "progress",
+      `${req.label}: creating session (${req.eps.join(",")}, opt=${optLevel}, model by URL)...`,
+    );
     const tCreate = performance.now();
-    const session = await ort.InferenceSession.create(modelBytes, {
-      executionProviders: req.eps,
-      graphOptimizationLevel: "all",
-    });
+    // Heartbeat so a slow (but alive) session creation is distinguishable
+    // from a deadlock.
+    const heartbeat = setInterval(() => {
+      post(
+        "progress",
+        `${req.label}: still creating session, ${Math.round((performance.now() - tCreate) / 1000)}s...`,
+      );
+    }, 15000);
+    let session: ort.InferenceSession;
+    try {
+      // Session options verbatim from woodshed-reference/demo.js: model
+      // passed as a URL string (ORT fetches internally; passing bytes
+      // doubles peak memory and drove the fp16 std::bad_alloc), the
+      // requested EPs, and graphOptimizationLevel. demo.js sets nothing
+      // else.
+      session = await Promise.race([
+        ort.InferenceSession.create(req.modelUrl, {
+          executionProviders: req.eps,
+          graphOptimizationLevel: optLevel,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("session creation timeout")),
+            req.createTimeoutMs ?? CREATE_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    } finally {
+      clearInterval(heartbeat);
+    }
     result.sessionCreateMs = Math.round(performance.now() - tCreate);
 
     let samples = TEN_SECONDS;

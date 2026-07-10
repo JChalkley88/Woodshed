@@ -6,8 +6,8 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 
-const URL = "http://localhost:5173/spike?autorun=1";
-const OUT = "spike/results.json";
+const URL = process.env.SPIKE_URL ?? "http://localhost:5173/spike?autorun=1";
+const OUT = process.env.SPIKE_OUT ?? "spike/results.json";
 const TIMEOUT_MS = 30 * 60 * 1000; // WASM runs can be slow; be patient.
 
 async function serverUp() {
@@ -47,7 +47,18 @@ await page.goto(URL);
 
 console.log("running benchmarks (this can take many minutes on WASM)...");
 const start = Date.now();
+let lastLogged = "";
 while (Date.now() - start < TIMEOUT_MS) {
+  // Stream the page's progress log so a hang is visible from the terminal.
+  const logText = await page
+    .locator("[data-testid=spike-log]")
+    .textContent()
+    .catch(() => "");
+  if (logText && logText !== lastLogged) {
+    const fresh = logText.slice(lastLogged.length).trim();
+    if (fresh) console.log(fresh);
+    lastLogged = logText;
+  }
   const results = await page.evaluate(() => window.__SPIKE_RESULTS__ ?? null);
   if (results) {
     mkdirSync("spike", { recursive: true });

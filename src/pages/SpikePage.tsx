@@ -6,7 +6,21 @@ import type { SpikeRequest, SpikeResult } from "../spike/spike.worker.ts";
 // worker so EP state and heap are isolated. The product itself (Night 2)
 // will create sessions with ["webgpu", "wasm"] so WebGPU is tried first
 // with WASM fallback; the spike pins each EP to get clean comparisons.
+// fp32 rows run first: fp16 weight handling is a plausible cause of the
+// earlier failures (std::bad_alloc, non-terminating session creation), so
+// fp32 is the more important data point. Rows whose session creation fails
+// are retried once with graphOptimizationLevel "disabled".
 const BENCHMARKS: SpikeRequest[] = [
+  {
+    label: "fp32-webgpu",
+    modelUrl: "/models/htdemucs.onnx",
+    eps: ["webgpu"],
+  },
+  {
+    label: "fp32-wasm",
+    modelUrl: "/models/htdemucs.onnx",
+    eps: ["wasm"],
+  },
   {
     label: "fp16-webgpu",
     modelUrl: "/models/htdemucs_fp16weights.onnx",
@@ -16,11 +30,6 @@ const BENCHMARKS: SpikeRequest[] = [
     label: "fp16-wasm",
     modelUrl: "/models/htdemucs_fp16weights.onnx",
     eps: ["wasm"],
-  },
-  {
-    label: "fp32-webgpu",
-    modelUrl: "/models/htdemucs.onnx",
-    eps: ["webgpu"],
   },
 ];
 
@@ -82,29 +91,62 @@ export default function SpikePage() {
     append(`webgpu adapter: ${env.webgpuAdapter ?? "NONE"}`);
     append(`crossOriginIsolated: ${env.crossOriginIsolated}, threads: ${env.hardwareConcurrency}`);
     const collected: SpikeResult[] = [];
-    for (const bench of BENCHMARKS) {
+    // Probe overrides: ?only=<label-prefix>&optoff=1&createTimeout=<ms>
+    const params = new URLSearchParams(window.location.search);
+    const only = params.get("only");
+    const createTimeout = params.get("createTimeout");
+    const queue: SpikeRequest[] = BENCHMARKS.filter(
+      (b) => !only || b.label.startsWith(only),
+    ).map((b) => ({
+      ...b,
+      ...(params.get("optoff") === "1"
+        ? { label: `${b.label}-optoff`, graphOptimizationLevel: "disabled" as const }
+        : {}),
+      ...(createTimeout ? { createTimeoutMs: Number(createTimeout) } : {}),
+    }));
+    while (queue.length > 0) {
+      const bench = queue.shift()!;
       append(`starting ${bench.label}`);
       const result = await new Promise<SpikeResult>((resolve) => {
         const worker = new Worker(
           new URL("../spike/spike.worker.ts", import.meta.url),
           { type: "module" },
         );
-        worker.onmessage = (e) => {
-          if (e.data.type === "progress") append(e.data.payload as string);
-          if (e.data.type === "result") {
-            worker.terminate();
-            resolve(e.data.payload as SpikeResult);
-          }
-        };
-        worker.onerror = (e) => {
+        // Watchdog: a hung EP (e.g. WebGPU device never resolving) must not
+        // stall the whole spike. Any progress message resets the clock.
+        const WATCHDOG_MS = 8 * 60 * 1000;
+        const fail = (error: string) => {
           worker.terminate();
           resolve({
             label: bench.label,
             modelUrl: bench.modelUrl,
             eps: bench.eps,
             ok: false,
-            error: `worker error: ${e.message}`,
+            error,
           });
+        };
+        let watchdog = setTimeout(
+          () => fail(`watchdog: no progress for ${WATCHDOG_MS / 60000} minutes`),
+          WATCHDOG_MS,
+        );
+        worker.onmessage = (e) => {
+          clearTimeout(watchdog);
+          if (e.data.type === "progress") {
+            append(e.data.payload as string);
+            watchdog = setTimeout(
+              () =>
+                fail(`watchdog: no progress for ${WATCHDOG_MS / 60000} minutes`),
+              WATCHDOG_MS,
+            );
+          }
+          if (e.data.type === "result") {
+            worker.terminate();
+            resolve(e.data.payload as SpikeResult);
+          }
+        };
+        worker.onerror = (e) => {
+          clearTimeout(watchdog);
+          fail(`worker error: ${e.message}`);
         };
         worker.postMessage(bench);
       });
@@ -113,8 +155,18 @@ export default function SpikePage() {
       append(
         result.ok
           ? `${bench.label}: steady-state ${result.steadyStateMs}ms for ${result.chunkSeconds}s chunk`
-          : `${bench.label}: FAILED — ${result.error}`,
+          : `${bench.label}: FAILED — ${result.error ?? "no error captured"}`,
       );
+      // Failed session creation gets one retry with graph optimisation off,
+      // which lowers the optimiser's peak memory.
+      if (!result.ok && (bench.graphOptimizationLevel ?? "all") === "all") {
+        queue.unshift({
+          ...bench,
+          label: `${bench.label}-optoff`,
+          graphOptimizationLevel: "disabled",
+        });
+        append(`queueing ${bench.label}-optoff retry`);
+      }
     }
     window.__SPIKE_RESULTS__ = { env, results: collected };
     setRunning(false);

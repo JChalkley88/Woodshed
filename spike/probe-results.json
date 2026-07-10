@@ -1,0 +1,21 @@
+{
+  "env": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 14,
+    "deviceMemoryGB": 16,
+    "crossOriginIsolated": true,
+    "webgpuAdapter": "intel / xe-lpg"
+  },
+  "results": [
+    {
+      "label": "fp16-wasm-optoff",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "session creation timeout"
+    }
+  ]
+}
