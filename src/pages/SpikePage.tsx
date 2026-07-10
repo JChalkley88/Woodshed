@@ -117,6 +117,7 @@ export default function SpikePage() {
           : {}),
         ...(createTimeout ? { createTimeoutMs: Number(createTimeout) } : {}),
         ...(threads ? { numThreads: Number(threads) } : {}),
+        ...(params.get("model") ? { modelUrl: params.get("model")! } : {}),
       }));
     while (queue.length > 0) {
       const bench = queue.shift()!;

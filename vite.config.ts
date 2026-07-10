@@ -18,13 +18,10 @@ const ortDist = dirname(require.resolve("onnxruntime-web"));
 
 // The plain build serves the WASM execution provider; the .jsep build is the
 // WebGPU-enabled one. ORT picks the right file itself when given a directory
-// prefix as `env.wasm.wasmPaths` ("/ort/" in the worker code).
-const ORT_RUNTIME_FILES = [
-  "ort-wasm-simd-threaded.mjs",
-  "ort-wasm-simd-threaded.wasm",
-  "ort-wasm-simd-threaded.jsep.mjs",
-  "ort-wasm-simd-threaded.jsep.wasm",
-];
+// prefix as `env.wasm.wasmPaths` ("/ort/" in the worker code). Matched by
+// pattern rather than allowlist because the file set differs across ORT
+// versions (1.18 vs 1.27).
+const ORT_RUNTIME_PATTERN = /^ort-.*\.(mjs|wasm)$/;
 
 /** Makes the ORT runtime available at /ort. In dev the files are served
  *  straight from node_modules by middleware (Vite refuses to serve
@@ -37,9 +34,11 @@ function ortRuntimeLocal(): Plugin {
     buildStart() {
       const outDir = join(__dirname, "public", "ort");
       mkdirSync(outDir, { recursive: true });
-      for (const file of ORT_RUNTIME_FILES) {
-        const src = join(ortDist, file);
-        if (existsSync(src)) copyFileSync(src, join(outDir, file));
+      const { readdirSync } = require("node:fs") as typeof import("node:fs");
+      for (const file of readdirSync(ortDist)) {
+        if (ORT_RUNTIME_PATTERN.test(file)) {
+          copyFileSync(join(ortDist, file), join(outDir, file));
+        }
       }
     },
     configureServer(server) {
@@ -48,7 +47,7 @@ function ortRuntimeLocal(): Plugin {
         if (!url.startsWith("/ort/")) return next();
         const name = url.slice("/ort/".length);
         const file = join(ortDist, name);
-        if (!ORT_RUNTIME_FILES.includes(name) || !existsSync(file)) {
+        if (!ORT_RUNTIME_PATTERN.test(name) || !existsSync(file)) {
           res.statusCode = 404;
           return res.end("not found");
         }

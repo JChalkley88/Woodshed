@@ -1,0 +1,58 @@
+{
+  "env": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 14,
+    "deviceMemoryGB": 16,
+    "crossOriginIsolated": true,
+    "webgpuAdapter": "intel / xe-lpg"
+  },
+  "results": [
+    {
+      "label": "fp16-wasm",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": false,
+      "heapUsedBeforeMB": null,
+      "error": "259324312"
+    },
+    {
+      "label": "fp16-wasm-optoff",
+      "modelUrl": "/models/htdemucs_fp16weights.onnx",
+      "eps": [
+        "wasm"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 6784,
+      "numThreadsAtCreate": 4,
+      "inferenceMs": [
+        6505,
+        10450
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 10450,
+      "msPerAudioSecond": 1340,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12867,
+          0.01939,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0164
+      },
+      "heapUsedAfterMB": null
+    }
+  ]
+}

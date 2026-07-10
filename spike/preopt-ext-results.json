@@ -1,0 +1,48 @@
+{
+  "env": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 14,
+    "deviceMemoryGB": 16,
+    "crossOriginIsolated": true,
+    "webgpuAdapter": "intel / xe-lpg"
+  },
+  "results": [
+    {
+      "label": "g0-fp16-webgpu-1t-optoff",
+      "modelUrl": "/models/htdemucs_fp16_preopt_ext.onnx",
+      "eps": [
+        "webgpu"
+      ],
+      "ok": true,
+      "heapUsedBeforeMB": null,
+      "sessionCreateMs": 2131,
+      "numThreadsAtCreate": 1,
+      "inferenceMs": [
+        12986,
+        12220
+      ],
+      "usedFallbackSegment": true,
+      "chunkSamples": 343980,
+      "chunkSeconds": 7.8,
+      "steadyStateMs": 12220,
+      "msPerAudioSecond": 1567,
+      "sanity": {
+        "outputDims": [
+          1,
+          4,
+          2,
+          343980
+        ],
+        "finite": true,
+        "stemRms": [
+          0.12866,
+          0.01937,
+          0.13988,
+          0.00016
+        ],
+        "reconstructionError": 0.0165
+      },
+      "heapUsedAfterMB": null
+    }
+  ]
+}

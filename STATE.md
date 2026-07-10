@@ -131,6 +131,34 @@ The thread hypothesis was half the story. With `numThreads = 1`, session creatio
 
 **Memory**: `performance.memory` is unavailable in workers on this Chrome, so heap deltas were not captured; peak usage is bounded by the failure data itself (opt="all" exhausts the WASM heap on a 166MB model; opt off fits comfortably).
 
+## Daylight follow-ups (same day, after the gate)
+
+Two bounded experiments, run after Jack's GO call in NIGHT-2-BRIEF.md.
+
+### 1. Offline pre-optimised model — adopted
+
+`scripts/preopt-model.py` saves an offline-optimised copy via Python onnxruntime 1.27.0 (`optimized_model_filepath`). Benchmarked with the gate recipe (WebGPU, 1 thread at create, in-browser optimisation off), steady-state per 7.8s chunk:
+
+| Model file | Size | Create | Steady-state | 4-min song |
+|---|---|---|---|---|
+| htdemucs_fp16weights.onnx (baseline) | 166MB | 40.1s | 9.31s | ~6.5 min |
+| **htdemucs_fp16_preopt.onnx (basic level) — adopted** | 345MB | **2.3s** | **7.96s** | **~5.6 min** |
+| extended level | 345MB | 2.4s | 12.22s | rejected — its fused ops fall off the GPU |
+
+Basic level wins: creation 17x faster, inference 15% faster, output numerically identical to the baseline (stem RMS matches to five decimal places, reconstruction error 1.65%). The cost: the optimiser's constant folding expands the fp16 weights to fp32, so the file doubles to 345MB. Adopted as `models/htdemucs_fp16_preopt.onnx` and NIGHT-2-BRIEF's model reference updated; if R2 download size proves more important than the one-time 40s create, the 166MB baseline remains valid under the identical recipe. Extended level was generated, benchmarked, rejected, and deleted.
+
+### 2. onnxruntime-web 1.18.0 — tested and reverted
+
+- **WebGPU: broken on current Chrome.** 1.18's backend calls `adapter.requestAdapterInfo()`, which Chrome has since removed, so no WebGPU session can ever be created on a modern browser regardless of model or options.
+- **WASM, opt "all", 4 threads (the reference demo's exact config): fails fast** with a raw numeric error (`259324312`), 1.18's presentation of the same allocation failure — so the reference demo's configuration does not work with this 166MB model on this machine on either version; the demo presumably succeeded historically on smaller specialist models or different hardware.
+- **WASM, opt off, 4 threads: works on 1.18** (creation does not hang multi-threaded, unlike 1.27) at 10.45s steady-state — faster than 1.27's create-at-1-raise-to-4 recipe (14.06s).
+
+1.18 is better only on the WASM fallback path and loses WebGPU entirely, so per the "decisively better on both" bar it was **reverted; the pin stays at 1.27.0** (verified restored, tests green). Worth carrying forward: the 1.27 multi-thread creation hang is a genuine regression (1.18 creates multi-threaded fine with opt off), which supports the #26858 report and the create-single-raise-after recipe as the stable workaround.
+
+Data: `spike/preopt-results.json`, `spike/preopt-ext-results.json`, `spike/ort118-results.json`, `spike/ort118-wasm-results.json`.
+
 ### Verdict
 
 The configuration that creates sessions on onnxruntime-web 1.27.0 is single-threaded creation with graph optimisation disabled and the model loaded by URL, with threads raisable to 4 after creation for WASM inference; in that configuration every model/EP pair works and produces sane 4-stem output. Timings: fp16 on WebGPU separates at 9.31s per 7.8s chunk, projecting to ~6.5 minutes for a 4-minute song on this Intel Xe iGPU (WASM fallback: ~9.8 minutes with the thread-raise recipe). That comprehensively unblocks the technology but misses the morning gate's ~90-second threshold by roughly 4×, so the confirmed Night 2 call per the plan's own criterion is **SWITCH-TO-2-STEM** (Open-Unmix ONNX, vocals/accompaniment) as the default separation path, shipping **fp16** weights wherever htdemucs is used — with the strong recommendation that htdemucs 4-stem stays in the build behind a "takes longer, worth it" HQ option rather than being deleted, because it now demonstrably runs, its cost is one-time per song (cached in IndexedDB from Night 2), and a machine with a discrete GPU will land dramatically closer to the gate than this laptop. Two cheap daylight experiments could still upgrade the default: an offline-pre-optimised model file (restoring the optimiser's gains without its in-browser memory spike) and a one-run sanity check on ORT 1.18.0 to see whether creation limits are version-specific.
+
+*(Superseded same day: Jack's call in NIGHT-2-BRIEF.md is GO with htdemucs 4-stem fp16 as the only separation path, treating separation as a one-time cached import cost rather than a blocking wait. Both daylight experiments were then run — results in "Daylight follow-ups" above; the pre-optimised model cuts the projection to ~5.6 minutes.)*
