@@ -31,8 +31,9 @@ export function useSliderInteraction({
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    (e.currentTarget as HTMLElement).focus();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture?.(e.pointerId);
+    el.focus();
     drag.current = { startY: e.clientY, startPos: posRef.current };
   }, []);
 

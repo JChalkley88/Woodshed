@@ -26,9 +26,11 @@ const ORT_RUNTIME_FILES = [
   "ort-wasm-simd-threaded.jsep.wasm",
 ];
 
-/** Copies the ORT runtime into public/ort so it is served in dev and bundled
- *  into dist on build. public/ort is gitignored; node_modules is the source
- *  of truth. */
+/** Makes the ORT runtime available at /ort. In dev the files are served
+ *  straight from node_modules by middleware (Vite refuses to serve
+ *  public-dir files as JS module imports, and ORT dynamically imports its
+ *  .mjs loader). For builds they are copied into public/ort, which is
+ *  gitignored; node_modules is the source of truth. */
 function ortRuntimeLocal(): Plugin {
   return {
     name: "woodshed:ort-runtime-local",
@@ -39,6 +41,26 @@ function ortRuntimeLocal(): Plugin {
         const src = join(ortDist, file);
         if (existsSync(src)) copyFileSync(src, join(outDir, file));
       }
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? "").split("?")[0];
+        if (!url.startsWith("/ort/")) return next();
+        const name = url.slice("/ort/".length);
+        const file = join(ortDist, name);
+        if (!ORT_RUNTIME_FILES.includes(name) || !existsSync(file)) {
+          res.statusCode = 404;
+          return res.end("not found");
+        }
+        res.setHeader(
+          "Content-Type",
+          name.endsWith(".wasm") ? "application/wasm" : "text/javascript",
+        );
+        res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+        const fs = require("node:fs") as typeof import("node:fs");
+        res.setHeader("Content-Length", fs.statSync(file).size);
+        fs.createReadStream(file).pipe(res);
+      });
     },
   };
 }
