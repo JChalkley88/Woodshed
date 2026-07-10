@@ -1,8 +1,12 @@
-// The Woodshed practice engine. One loaded track tonight; stems arrive on
-// Night 2. Playback runs through the Signalsmith Stretch AudioWorklet
-// (MIT), which gives pitch-preserved time-stretch and sample-accurate
-// looping inside the worklet itself.
+// The Woodshed practice engine. Night 2: as well as the single loaded
+// track, it plays four separated stems sample-locked through ONE
+// Signalsmith Stretch AudioWorklet node configured for eight output
+// channels (4 stems x stereo), split into per-stem gain/meter chains. A
+// single worklet instance means stems can never drift: one clock, one
+// rate, one loop state.
 import SignalsmithStretch, { type StretchNode } from "signalsmith-stretch";
+import { int16ToFloat32 } from "../separation/chunking.ts";
+import { N_CHANNELS, N_STEMS, SAMPLE_RATE, STEM_DISPLAY } from "../separation/constants.ts";
 import {
   clamp,
   dbToGain,
@@ -15,6 +19,13 @@ import {
 
 export const ACCEPTED_EXTENSIONS = ["mp3", "wav", "m4a", "flac"] as const;
 
+export interface StemStripState {
+  gainDb: number;
+  muted: boolean;
+  /** Meter level 0..1 with ballistics applied. */
+  level: number;
+}
+
 export interface EngineState {
   status: "empty" | "loading" | "ready" | "error";
   error: string | null;
@@ -25,14 +36,15 @@ export interface EngineState {
   position: number;
   /** Tempo percentage, 50 to 120. */
   speed: number;
-  /** Channel fader level in dB. */
+  /** Single-track channel fader level in dB (single mode). */
   gainDb: number;
   muted: boolean;
-  /** First tapped loop point awaiting its partner, seconds. */
   pendingLoopStart: number | null;
   loop: LoopRegion | null;
-  /** Meter level 0..1 with ballistics applied. */
+  /** Meter level for the single-track strip. */
   level: number;
+  /** null in single-track mode; four strips once stems are loaded. */
+  stems: StemStripState[] | null;
 }
 
 const initialState: EngineState = {
@@ -48,6 +60,7 @@ const initialState: EngineState = {
   pendingLoopStart: null,
   loop: null,
   level: 0,
+  stems: null,
 };
 
 type Listener = () => void;
@@ -57,12 +70,16 @@ export class PracticeEngine {
   private listeners = new Set<Listener>();
   private ctx: AudioContext | null = null;
   private stretch: StretchNode | null = null;
-  private gainNode: GainNode | null = null;
-  private analyser: AnalyserNode | null = null;
+  private gainNodes: GainNode[] = [];
+  private analysers: AnalyserNode[] = [];
   private meterBlock: Float32Array<ArrayBuffer> | null = null;
   private lastMeterTime = 0;
-  /** Waveform peaks (max abs per bucket), computed at decode time. */
+  /** Mixed-track waveform peaks. */
   peaks: Float32Array | null = null;
+  /** Per-stem waveform peaks once separated. */
+  stemPeaks: Float32Array[] | null = null;
+  /** Decoded 44.1kHz stereo source, kept until separation completes. */
+  private sourceChannels: [Float32Array, Float32Array] | null = null;
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -76,8 +93,11 @@ export class PracticeEngine {
     for (const l of this.listeners) l();
   }
 
-  /** Decode and load a file. Friendly errors for unsupported or corrupt
-   *  input; previous track (if any) keeps playing until decode succeeds. */
+  /** Stereo source data for the separation pipeline (borrowed, not owned). */
+  getSourceChannels(): [Float32Array, Float32Array] | null {
+    return this.sourceChannels;
+  }
+
   async loadFile(file: File): Promise<void> {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (!ACCEPTED_EXTENSIONS.includes(ext as (typeof ACCEPTED_EXTENSIONS)[number])) {
@@ -103,20 +123,14 @@ export class PracticeEngine {
         throw new Error(`${file.name} is too short to practise with.`);
       }
 
-      // Peaks must be computed before handing the channel data to the
-      // worklet, and the worklet gets copies so the transfer can't detach
-      // the originals.
-      const channels: Float32Array[] = [];
-      for (let c = 0; c < Math.min(2, buffer.numberOfChannels); c++) {
-        channels.push(buffer.getChannelData(c));
-      }
-      this.peaks = computePeaks(channels, 4096);
+      const left = buffer.getChannelData(0);
+      const right =
+        buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left.slice();
+      this.sourceChannels = [left, right];
+      this.peaks = computePeaks([left, right], 4096);
+      this.stemPeaks = null;
 
-      const stretch = await this.ensureStretch(ctx);
-      await stretch.schedule({ active: false });
-      await stretch.dropBuffers();
-      await stretch.addBuffers(channels.map((c) => c.slice()));
-
+      await this.buildGraph([left.slice(), right.slice()]);
       this.set({
         status: "ready",
         error: null,
@@ -127,10 +141,12 @@ export class PracticeEngine {
         pendingLoopStart: null,
         loop: null,
         level: 0,
+        stems: null,
       });
-      await this.applySchedule({ input: 0 });
+      await this.applySchedule({ input: 0, active: false });
     } catch (err) {
       this.peaks = null;
+      this.sourceChannels = null;
       this.set({
         status: "error",
         error: err instanceof Error ? err.message : String(err),
@@ -140,61 +156,128 @@ export class PracticeEngine {
         position: 0,
         loop: null,
         pendingLoopStart: null,
+        stems: null,
       });
     }
   }
 
+  /** Switch the loaded song to four separated stems (8 rows of 16-bit PCM,
+   *  stem-major stereo pairs). Playback position, speed, loop, and playing
+   *  state survive the switch. */
+  async enterStemMode(rows: Int16Array[], totalSamples: number): Promise<void> {
+    if (this.state.status !== "ready") return;
+    const floats = rows.map((r) => int16ToFloat32(r));
+    this.stemPeaks = [];
+    for (let s = 0; s < N_STEMS; s++) {
+      this.stemPeaks.push(
+        computePeaks([floats[s * N_CHANNELS], floats[s * N_CHANNELS + 1]], 4096),
+      );
+    }
+    const { position, playing, duration } = this.state;
+    await this.buildGraph(floats);
+    this.sourceChannels = null; // stems are the source of truth now
+    this.set({
+      stems: STEM_DISPLAY.map(() => ({ gainDb: 0, muted: false, level: 0 })),
+      duration: Math.min(duration, totalSamples / SAMPLE_RATE),
+    });
+    this.applyStemGains();
+    await this.applySchedule({
+      input: clamp(position, 0, this.state.duration),
+      active: playing,
+    });
+  }
+
   private async ensureContext(): Promise<AudioContext> {
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      // Fixed 44.1kHz so decoded audio, the demucs graph, and stem playback
+      // all share one sample rate (the browser resamples to the device).
+      this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
     return this.ctx;
   }
 
-  private async ensureStretch(ctx: AudioContext): Promise<StretchNode> {
-    if (this.stretch) return this.stretch;
-    const stretch = await SignalsmithStretch(ctx);
-    this.gainNode = ctx.createGain();
-    this.analyser = ctx.createAnalyser();
-    this.analyser.fftSize = 2048;
-    this.meterBlock = new Float32Array(this.analyser.fftSize);
-    stretch.connect(this.gainNode);
-    this.gainNode.connect(this.analyser);
-    this.analyser.connect(ctx.destination);
-    stretch.setUpdateInterval(0.05, (inputTime) => this.onTime(inputTime));
+  /** (Re)builds the audio graph for the given rows: 2 rows = single track,
+   *  8 rows = four stems through one 8-channel worklet, a splitter, and
+   *  per-stem gain/analyser chains. */
+  private async buildGraph(rows: Float32Array[]): Promise<void> {
+    const ctx = await this.ensureContext();
+    if (this.stretch) {
+      try {
+        await this.stretch.schedule({ active: false });
+        await this.stretch.dropBuffers();
+      } catch {
+        // The old node is being discarded either way.
+      }
+      this.stretch.disconnect();
+    }
+    for (const node of [...this.gainNodes, ...this.analysers]) node.disconnect();
+    this.gainNodes = [];
+    this.analysers = [];
+
+    const stretch = await SignalsmithStretch(ctx, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [rows.length],
+    });
+    await stretch.addBuffers(rows);
+
+    const groups = rows.length / N_CHANNELS; // 1 or 4
+    const splitter = ctx.createChannelSplitter(rows.length);
+    stretch.connect(splitter);
+    for (let g = 0; g < groups; g++) {
+      const merger = ctx.createChannelMerger(N_CHANNELS);
+      splitter.connect(merger, g * N_CHANNELS, 0);
+      splitter.connect(merger, g * N_CHANNELS + 1, 1);
+      const gain = ctx.createGain();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      merger.connect(gain);
+      gain.connect(analyser);
+      analyser.connect(ctx.destination);
+      this.gainNodes.push(gain);
+      this.analysers.push(analyser);
+    }
+    this.meterBlock = new Float32Array(2048);
+    stretch.setUpdateInterval(0.05, (t) => this.onTime(t));
     this.stretch = stretch;
-    return stretch;
+    this.applyAllGains();
   }
 
   private onTime(inputTime: number) {
     const { duration, playing, loop } = this.state;
     if (!playing) return;
     const position = clamp(inputTime, 0, duration || inputTime);
-    // Track finished (the worklet plays silence past the buffer end).
     if (!loop && duration > 0 && inputTime >= duration) {
       void this.pause();
       this.set({ position: duration });
       return;
     }
-    this.set({ position, level: this.nextMeterLevel() });
+    this.set({ position, ...this.nextMeterLevels() });
   }
 
-  private nextMeterLevel(): number {
-    if (!this.analyser || !this.meterBlock) return 0;
+  private nextMeterLevels(): Partial<EngineState> {
+    if (!this.meterBlock || this.analysers.length === 0) return {};
     const now = performance.now();
-    // Spec section 6: ~30fps meters, dropped to 4fps under reduced motion.
     const interval = matchMedia("(prefers-reduced-motion: reduce)").matches
       ? 250
       : 25;
-    if (now - this.lastMeterTime < interval) return this.state.level;
+    if (now - this.lastMeterTime < interval) return {};
     this.lastMeterTime = now;
-    this.analyser.getFloatTimeDomainData(this.meterBlock);
-    // Scale RMS so a full-scale sine reads near the top of the meter.
-    const target = this.state.muted
-      ? 0
-      : clamp(rms(this.meterBlock) * 2.2, 0, 1);
-    return meterBallistics(this.state.level, target);
+
+    if (this.state.stems) {
+      const stems = this.state.stems.map((strip, i) => {
+        this.analysers[i].getFloatTimeDomainData(this.meterBlock!);
+        const target = strip.muted
+          ? 0
+          : clamp(rms(this.meterBlock!) * 2.2, 0, 1);
+        return { ...strip, level: meterBallistics(strip.level, target) };
+      });
+      return { stems };
+    }
+    this.analysers[0].getFloatTimeDomainData(this.meterBlock);
+    const target = this.state.muted ? 0 : clamp(rms(this.meterBlock) * 2.2, 0, 1);
+    return { level: meterBallistics(this.state.level, target) };
   }
 
   private async applySchedule(extra: Record<string, number | boolean> = {}) {
@@ -218,8 +301,6 @@ export class PracticeEngine {
     await this.ensureContext();
     let from = this.state.position;
     if (this.state.duration > 0 && from >= this.state.duration) from = 0;
-    // Playing from outside an engaged loop is allowed; the loop catches the
-    // playhead when it arrives (matches tape-machine behaviour).
     await this.applySchedule({ active: true, input: from });
     this.set({ playing: true, position: from });
   }
@@ -227,7 +308,11 @@ export class PracticeEngine {
   async pause(): Promise<void> {
     if (!this.stretch) return;
     await this.stretch.schedule({ active: false });
-    this.set({ playing: false, level: 0 });
+    this.set({
+      playing: false,
+      level: 0,
+      stems: this.state.stems?.map((s) => ({ ...s, level: 0 })) ?? null,
+    });
   }
 
   async seek(seconds: number): Promise<void> {
@@ -251,25 +336,60 @@ export class PracticeEngine {
     void this.applySchedule();
   }
 
+  /* -------- Single-track strip -------- */
   setGainDb(db: number): void {
     this.set({ gainDb: db });
-    this.applyGain();
+    this.applyAllGains();
   }
 
   setMuted(muted: boolean): void {
     this.set({ muted });
-    this.applyGain();
+    this.applyAllGains();
   }
 
-  private applyGain() {
-    if (!this.gainNode || !this.ctx) return;
-    const { muted, gainDb } = this.state;
-    const target = muted ? 0 : dbToGain(gainDb);
-    this.gainNode.gain.setTargetAtTime(target, this.ctx.currentTime, 0.01);
+  /* -------- Stem strips -------- */
+  setStemGainDb(index: number, db: number): void {
+    if (!this.state.stems) return;
+    const stems = this.state.stems.map((s, i) =>
+      i === index ? { ...s, gainDb: db } : s,
+    );
+    this.set({ stems });
+    this.applyStemGains();
   }
 
-  /** The L key: first tap arms a loop start at the playhead, second tap
-   *  completes and engages the loop, a tap with a loop engaged clears it. */
+  setStemMuted(index: number, muted: boolean): void {
+    if (!this.state.stems) return;
+    const stems = this.state.stems.map((s, i) =>
+      i === index ? { ...s, muted } : s,
+    );
+    this.set({ stems });
+    this.applyStemGains();
+  }
+
+  private applyAllGains() {
+    if (this.state.stems) this.applyStemGains();
+    else if (this.gainNodes[0] && this.ctx) {
+      const { muted, gainDb } = this.state;
+      this.gainNodes[0].gain.setTargetAtTime(
+        muted ? 0 : dbToGain(gainDb),
+        this.ctx.currentTime,
+        0.01,
+      );
+    }
+  }
+
+  private applyStemGains() {
+    if (!this.state.stems || !this.ctx) return;
+    this.state.stems.forEach((strip, i) => {
+      this.gainNodes[i]?.gain.setTargetAtTime(
+        strip.muted ? 0 : dbToGain(strip.gainDb),
+        this.ctx!.currentTime,
+        0.01,
+      );
+    });
+  }
+
+  /* -------- Loop -------- */
   async tapLoopPoint(): Promise<void> {
     const { status, position, pendingLoopStart, loop, duration } = this.state;
     if (status !== "ready") return;
@@ -279,7 +399,7 @@ export class PracticeEngine {
       return;
     }
     const region = normaliseLoop(pendingLoopStart, position, duration);
-    if (!region) return; // too short to loop; keep the pending point armed
+    if (!region) return;
     this.set({ loop: region, pendingLoopStart: null });
     await this.applySchedule();
   }
@@ -293,7 +413,6 @@ export class PracticeEngine {
     await this.applySchedule();
   }
 
-  /** Set the loop directly (waveform drag / tests). */
   async setLoop(a: number, b: number): Promise<void> {
     const region = normaliseLoop(a, b, this.state.duration);
     if (!region) return;

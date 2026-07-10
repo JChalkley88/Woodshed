@@ -170,6 +170,65 @@
 .lane-wave {
   flex: 1;
 }
+.lane + .lane {
+  margin-top: 7px;
+}
+.deck-status {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.deck-status .hw-lcd {
+  min-width: 340px;
+}
+/* Amber warning line under the deck (spec section 7, WebGPU absent). */
+.deck-warning {
+  margin-top: 8px;
+  font-family: var(--font-lcd);
+  font-size: 12px;
+  color: var(--led-amber);
+  text-shadow: 0 0 7px color-mix(in srgb, var(--led-amber) 50%, transparent);
+  text-align: center;
+}
+/* Locked strips while separation runs (spec section 7). */
+.strip-locked {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* ---------- cache rack unit ---------- */
+.rack {
+  width: 1160px;
+  max-width: 100%;
+  margin: 0 auto 40px;
+  padding: 0 16px;
+}
+.rack-panel {
+  margin: 0 29px;
+  background: linear-gradient(180deg, var(--strip-hi), var(--strip-lo));
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 10px 16px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.rack-song {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rack-song .hw-btn {
+  width: auto;
+  padding: 3px 8px;
+  height: 22px;
+}
 .deck-message {
   font-family: var(--font-lcd);
   color: var(--lcd-dim);
