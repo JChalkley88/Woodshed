@@ -237,6 +237,91 @@
   opacity: 0.55;
 }
 
+/* ---------- chord lane (spec section 5 slot, 4.6 treatment) ---------- */
+.chordlane {
+  margin-bottom: 8px;
+}
+.chordlane-lcd {
+  overflow: hidden;
+}
+.chordlane-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+}
+.chordlane-chip {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  min-width: 44px;
+}
+.chordlane-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.chordlane-status .hw-lcd {
+  flex: 1;
+}
+/* Beta tag: engraved, not a web badge (section 10). */
+.beta-tag {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--engrave-faint);
+  border: 1px solid var(--engrave-faint);
+  border-radius: 2px;
+  padding: 1px 4px;
+  flex: none;
+}
+
+/* ---------- LOCKED treatment (spec section 7): grey, never hide ---------- */
+.rack-locked .hw-btn,
+.rack-locked .hw-lcd {
+  opacity: 0.55;
+}
+.rack-locked .hw-lcd {
+  color: var(--engrave-dim);
+  text-shadow: none;
+}
+.locked-control .hw-btn,
+.locked-control .hw-lcd {
+  opacity: 0.55;
+}
+.locked-control .hw-lcd {
+  color: var(--engrave-dim);
+  text-shadow: none;
+}
+
+/* ---------- licence panel rack unit ---------- */
+.licence-panel {
+  justify-content: space-between;
+}
+.licence-plate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.licence-title {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--stem-vocals);
+}
+.licence-copy {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--engrave);
+  line-height: 1.5;
+  max-width: 640px;
+}
+
 /* ---------- cache rack unit ---------- */
 .rack {
   width: 1160px;

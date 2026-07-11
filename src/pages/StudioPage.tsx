@@ -31,7 +31,12 @@ import type {
   SavedLoop,
   StemMixerSetting,
 } from "../separation/cache.ts";
+import { analyser } from "../analysis/analyser.ts";
+import { featureUnlocked } from "../licence/licence.ts";
+import { ChordLane } from "../studio/ChordLane.tsx";
+import { ExportRack } from "../studio/ExportRack.tsx";
 import { LaneOverlay } from "../studio/LaneOverlay.tsx";
+import { LicencePanel } from "../studio/LicencePanel.tsx";
 import { WaveformLane } from "../studio/WaveformLane.tsx";
 import "../studio/studio.css";
 
@@ -71,6 +76,10 @@ function defaultScribbles(): Record<StemName, string> {
 export default function StudioPage() {
   const state = useSyncExternalStore(engine.subscribe, engine.getState);
   const sep = useSyncExternalStore(separator.subscribe, separator.getState);
+  const chords = useSyncExternalStore(analyser.subscribe, analyser.getState);
+  const [licencePanelOpen, setLicencePanelOpen] = useState(false);
+  const chordsUnlocked = featureUnlocked("chords");
+  const exportUnlocked = featureUnlocked("export");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [scribbles, setScribbles] = useState<Record<StemName, string>>(
@@ -175,6 +184,11 @@ export default function StudioPage() {
         }
         setSongKey(key);
         restoredKey.current = key;
+        // Cached chord segments restore with the song; a cache miss just
+        // leaves the honest empty state (analysis is never a load side
+        // effect).
+        analyser.reset();
+        if (key) await analyser.loadCached(key);
         if (cached) await applyOutcome(cached);
       })();
     }
@@ -232,6 +246,17 @@ export default function StudioPage() {
       updatedAt: Date.now(),
     });
   }, [mixerSig, scribbles, savedLoops, songKey]);
+
+  const startChordAnalysis = useCallback(() => {
+    if (!chordsUnlocked) {
+      setLicencePanelOpen(true);
+      return;
+    }
+    const mono = engine.getMonoMixCopy();
+    const key = separator.currentKey;
+    if (!mono || !key) return;
+    void analyser.analyse(mono, key);
+  }, [chordsUnlocked]);
 
   const saveCurrentLoop = useCallback(() => {
     const loop = engine.getState().loop;
@@ -354,6 +379,54 @@ export default function StudioPage() {
           </div>
 
           <div className={`deck${dragOver ? " deck-drop" : ""}`}>
+            {state.status === "ready" &&
+              (chords.segments && chords.segments.length > 0 ? (
+                <ChordLane
+                  segments={chords.segments}
+                  position={state.position}
+                  onSeek={(t) => void engine.seek(t)}
+                />
+              ) : (
+                <div
+                  className={`chordlane-status${chordsUnlocked ? "" : " locked-control"}`}
+                  data-testid="chord-status"
+                >
+                  <LCD variant="readout" ariaLabel="Chord analysis status">
+                    <span data-testid="chord-readout">
+                      {!chordsUnlocked
+                        ? "LOCKED"
+                        : chords.phase === "analysing"
+                          ? `READING CHORDS ${chords.total > 0 ? Math.round((chords.done / chords.total) * 100) : 0}%`
+                          : chords.phase === "error"
+                            ? `CHORDS FAILED — ${chords.error}`
+                            : chords.phase === "done"
+                              ? "NO CHORDS FOUND"
+                              : "NO CHORDS YET"}
+                    </span>
+                  </LCD>
+                  <span className="beta-tag">Chords beta</span>
+                  {chords.phase === "analysing" ? (
+                    <HardwareButton
+                      label="STOP"
+                      led="red"
+                      on={false}
+                      momentary
+                      ariaLabel="Cancel chord analysis"
+                      onChange={() => analyser.cancel()}
+                    />
+                  ) : (
+                    <HardwareButton
+                      label="CHORDS"
+                      led="amber"
+                      on={false}
+                      momentary
+                      wide
+                      ariaLabel="Analyse chords"
+                      onChange={startChordAnalysis}
+                    />
+                  )}
+                </div>
+              ))}
             {state.status === "ready" && state.stems && engine.stemPeaks && (
               <div className="deck-lanes" data-testid="stem-lanes">
                 {STEM_DISPLAY.map((stem) => engine.stemPeaks && (
@@ -642,6 +715,18 @@ export default function StudioPage() {
       </div>
 
       <div className="rack">
+        <LicencePanel
+          open={licencePanelOpen}
+          onClose={() => setLicencePanelOpen(false)}
+        />
+        {state.status === "ready" && state.stems && songKey && state.fileName && (
+          <ExportRack
+            songKey={songKey}
+            fileName={state.fileName}
+            unlocked={exportUnlocked}
+            onLockedInteraction={() => setLicencePanelOpen(true)}
+          />
+        )}
         {state.status === "ready" && songKey && (
           <div className="rack-panel" data-testid="loop-bank">
             <span className="label">Loop bank</span>

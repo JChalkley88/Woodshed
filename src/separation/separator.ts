@@ -305,6 +305,19 @@ export class Separator {
     this.worker?.postMessage({ type: "cancel" } satisfies WorkerRequest);
   }
 
+  /** Stem rows for export, read fresh from the cache so nothing large
+   *  stays resident between exports. Null when the song is not cached. */
+  async getCachedRows(
+    key: string,
+  ): Promise<{ rows: Int16Array[]; totalSamples: number } | null> {
+    const cached = await getStems(key);
+    if (!cached) return null;
+    return {
+      rows: cached.rows.map((r) => new Int16Array(r)),
+      totalSamples: cached.totalSamples,
+    };
+  }
+
   /* -------- Per-song practice state (scribbles, loops, mixer) -------- */
   getSongState = (key: string): Promise<SongStateRecord | undefined> =>
     getSongState(key);
