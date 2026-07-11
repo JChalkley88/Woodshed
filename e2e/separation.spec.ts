@@ -172,6 +172,26 @@ test("a stalled chunk mid-run recovers via the watchdog and resumes from partial
   await expect(page.getByTestId("cache-rack")).toContainText("test-tone.wav");
 });
 
+test("a slow silent warmup never trips the watchdog", async ({ page }) => {
+  // Regression guard: session creation is legitimately silent for far
+  // longer than any chunk deadline (model fetch plus up to ~120s per EP
+  // attempt). The watchdog must stay unarmed until chunk processing
+  // begins, or warmup gets killed into a respawn loop that presents as a
+  // desk frozen at 0%. Here the mock warms silently for 4s against a 1s
+  // watchdog override; the run must still complete cleanly.
+  await page.goto("/studio?mockSeparation=slowwarm&sepWatchdogMs=1000");
+  await loadFixture(page);
+  await pressSeparate(page);
+
+  await expect(page.getByTestId("separation-status")).toContainText(
+    "WARMING UP THE SEPARATOR",
+  );
+  await expect(page.getByTestId("stem-lanes")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("deck-error")).toHaveCount(0);
+});
+
 test("WASM fallback shows the amber warning with an estimate", async ({
   page,
 }) => {

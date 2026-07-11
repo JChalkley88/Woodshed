@@ -80,15 +80,29 @@ function post(msg: WorkerResponse, transfer: Transferable[] = []) {
 }
 
 /** The session is created once per worker and survives songs and
- *  cancellations (brief: keep it alive for subsequent songs in the visit). */
+ *  cancellations (brief: keep it alive for subsequent songs in the visit).
+ *
+ *  A heartbeat posts liveness every 10s while creation runs: session
+ *  creation is legitimately silent for long stretches (the model fetch
+ *  plus up to CREATE_TIMEOUT_MS per EP attempt), and the orchestrator
+ *  must be able to tell "still warming" from "dead" without guessing.
+ *  Creation hangs are guarded here by CREATE_TIMEOUT_MS (session.ts),
+ *  which SETTLES into an error; the orchestrator's inactivity watchdog
+ *  deliberately stays unarmed until chunk processing begins. */
 function ensureSession(): Promise<DemucsSession> {
   if (!demucsPromise) {
+    const heartbeat = setInterval(
+      () => post({ type: "warming", message: "still creating the session" }),
+      10_000,
+    );
     demucsPromise = createDemucsSession(MODEL_URL, (message) =>
       post({ type: "warming", message }),
-    ).catch((err) => {
-      demucsPromise = null; // allow retry on next request
-      throw err;
-    });
+    )
+      .catch((err) => {
+        demucsPromise = null; // allow retry on next request
+        throw err;
+      })
+      .finally(() => clearInterval(heartbeat));
   }
   return demucsPromise;
 }

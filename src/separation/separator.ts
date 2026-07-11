@@ -91,12 +91,14 @@ class WorkerHungError extends Error {
   }
 }
 
-/** Inactivity floor. Generous by design: it must comfortably exceed a
- *  cold session create (up to ~120s on modest hardware) and the slowest
- *  observed CPU chunk (~35s); it stretches further once real chunk times
- *  are known. A spurious fire is safe (terminate, respawn, resume from
- *  partials) but costs a session re-create, so err high. Overridable via
- *  ?sepWatchdogMs= for tests. */
+/** Inactivity floor for the CHUNK phase (the watchdog never runs during
+ *  warmup; creation hangs settle via CREATE_TIMEOUT_MS in the worker).
+ *  Generous by design: the slowest observed CPU chunk is ~35s, the first
+ *  chunk gets double this floor (pipeline compilation, thread spin-up),
+ *  and the deadline stretches to eight times the measured average once
+ *  chunk times are known. A spurious fire is safe (terminate, respawn,
+ *  resume from partials) but costs a session re-create, so err high.
+ *  Overridable via ?sepWatchdogMs= for tests. */
 const WATCHDOG_FLOOR_MS = 240_000;
 
 export class Separator {
@@ -139,7 +141,9 @@ export class Separator {
                 ? "mock-wasm"
                 : mockMode === "stall"
                   ? "mock-stall"
-                  : "mock-webgpu",
+                  : mockMode === "slowwarm"
+                    ? "mock-slowwarm"
+                    : "mock-webgpu",
           })
         : new Worker(new URL("./separation.worker.ts", import.meta.url), {
             type: "module",
@@ -292,18 +296,35 @@ export class Separator {
     return new Promise((resolve, reject) => {
       const pendingWrites: Promise<void>[] = [];
 
-      // Inactivity watchdog: every worker message proves liveness. If the
-      // worker goes silent past the deadline (hung session.run from GPU
-      // device loss, or a hung create), terminate the whole worker: a
+      // Inactivity watchdog for the CHUNK PHASE ONLY: if the worker goes
+      // silent past the deadline while chunks are running (hung
+      // session.run from GPU device loss), terminate the whole worker: a
       // hung run can never be awaited, so recovery inside the worker
       // would race the session, which is exactly the "Session already
-      // started" failure. The deadline stretches with measured chunk
-      // times so slow hardware never trips it.
+      // started" failure.
+      //
+      // It stays UNARMED during warmup, deliberately. Session creation is
+      // legitimately silent for long stretches (the in-worker model fetch
+      // plus up to ~120s per EP attempt, and a WebGPU-then-WASM fallback
+      // chains two of those), and terminating mid-create just respawns
+      // into another slow create: a kill loop that presents as a desk
+      // frozen at 0%. Creation hangs are already guarded in the worker by
+      // CREATE_TIMEOUT_MS, which settles into an honest error. The
+      // watchdog arms on the "warm" message, when chunk processing
+      // begins; the first chunk gets a doubled grace (WebGPU pipeline
+      // compilation and WASM thread-pool spin-up land there), and the
+      // deadline then stretches with measured chunk times so slow
+      // hardware never trips it.
       const floorMs = this.watchdogFloorMs();
-      let deadlineMs = floorMs;
+      let deadlineMs = floorMs * 2; // first-chunk grace
+      let armed = false;
       let watchdog: ReturnType<typeof setTimeout> | undefined;
-      const stopWatchdog = () => clearTimeout(watchdog);
+      const stopWatchdog = () => {
+        armed = false;
+        clearTimeout(watchdog);
+      };
       const poke = () => {
+        if (!armed) return;
         clearTimeout(watchdog);
         watchdog = setTimeout(() => {
           this.worker?.terminate();
@@ -315,7 +336,6 @@ export class Separator {
           );
         }, deadlineMs);
       };
-      poke();
 
       worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const msg = e.data;
@@ -325,6 +345,8 @@ export class Separator {
             this.set({ phase: "warming" });
             break;
           case "warm":
+            armed = true;
+            poke();
             this.set({
               ep: msg.ep,
               wasmFallback: msg.ep === "wasm",
@@ -339,6 +361,8 @@ export class Separator {
             break;
           case "progress":
             if (msg.avgChunkMs !== null) {
+              // Real chunk times are known: drop the first-chunk grace
+              // and track eight times the measured average.
               deadlineMs = Math.max(floorMs, msg.avgChunkMs * 8);
             }
             this.set({

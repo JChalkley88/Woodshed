@@ -1,8 +1,12 @@
 /// <reference lib="webworker" />
-// Scripted stand-in for the separation worker, used by Playwright flows
-// (?mockSeparation=1, ?mockSeparation=wasm to exercise the fallback
-// messaging, or ?mockSeparation=stall to hang after three chunks on a
-// fresh run so the orchestrator's inactivity watchdog can be tested).
+// Scripted stand-in for the separation worker, used by Playwright flows.
+// Modes (?mockSeparation=...):
+//   1        normal WebGPU-flavoured run
+//   wasm     exercises the CPU-fallback messaging
+//   stall    hangs after three chunks on a fresh run, so the
+//            orchestrator's chunk-phase inactivity watchdog can be tested
+//   slowwarm takes a long silent warmup (longer than any test watchdog
+//            override), proving the watchdog stays unarmed until chunks
 // Same message protocol, deterministic output, no ORT: stems are scaled
 // copies of the input so the engine gets real playable audio.
 import { float32ToInt16 } from "./chunking.ts";
@@ -41,7 +45,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     cancelRequested = false;
     const started = performance.now();
     post({ type: "warming", message: "mock warmup" });
-    await sleep(300);
+    // Slow-warm mode: a long, wholly silent create (no messages at all),
+    // far past the test watchdog override.
+    await sleep(self.name === "mock-slowwarm" ? 4_000 : 300);
     post({ type: "warm", ep: ep(), createMs: 300 });
 
     const skipped = new Set(msg.partials.map((p) => p.index));
