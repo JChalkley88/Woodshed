@@ -173,6 +173,45 @@
 .lane + .lane {
   margin-top: 7px;
 }
+/* 4.9: one loop wash and one playhead span all lanes. .deck-lanes wraps
+   the lane rows; the overlay covers the wave column only (tag 70px + 8px
+   gap) and passes pointer events through to the lanes for seeking. */
+.deck-lanes {
+  position: relative;
+}
+.lane-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 78px;
+  right: 0;
+  pointer-events: none;
+}
+.lane-overlay-loop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--led-amber) 9%, transparent);
+  border-left: 1px solid var(--led-amber);
+  border-right: 1px solid var(--led-amber);
+}
+.lane-overlay-pending {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--led-amber);
+}
+.lane-overlay-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1.5px;
+  background: var(--playhead);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+  will-change: transform;
+}
 .deck-status {
   margin-top: 10px;
   display: flex;

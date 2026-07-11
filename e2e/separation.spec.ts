@@ -55,6 +55,8 @@ test("separation shows warming then honest progress, ends with four stem lanes",
 
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("waveform-lane")).toHaveCount(4);
+  // Spec 4.9: one playhead spans all four lanes; never one per lane.
+  await expect(page.getByTestId("playhead")).toHaveCount(1);
   for (const stem of ["vocals", "drums", "bass", "other"]) {
     await expect(page.getByTestId(`strip-${stem}`)).toBeVisible();
     await expect(page.getByTestId(`strip-${stem}`)).not.toHaveClass(

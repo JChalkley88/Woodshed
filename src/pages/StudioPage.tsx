@@ -19,6 +19,7 @@ import {
 import { STEM_DISPLAY, type StemName } from "../separation/constants.ts";
 import { separator, type SeparationOutcome } from "../separation/separator.ts";
 import type { CachedSongSummary } from "../separation/cache.ts";
+import { LaneOverlay } from "../studio/LaneOverlay.tsx";
 import { WaveformLane } from "../studio/WaveformLane.tsx";
 import "../studio/studio.css";
 
@@ -236,7 +237,7 @@ export default function StudioPage() {
 
           <div className={`deck${dragOver ? " deck-drop" : ""}`}>
             {state.status === "ready" && state.stems && engine.stemPeaks && (
-              <div data-testid="stem-lanes">
+              <div className="deck-lanes" data-testid="stem-lanes">
                 {STEM_DISPLAY.map((stem) => engine.stemPeaks && (
                   <div className="lane" key={stem.name}>
                     <div className="lane-tag">
@@ -252,9 +253,7 @@ export default function StudioPage() {
                       <WaveformLane
                         peaks={engine.stemPeaks[stem.name]}
                         duration={state.duration}
-                        position={state.position}
                         loop={state.loop}
-                        pendingLoopStart={state.pendingLoopStart}
                         muted={isStemSilenced(state.stems![stem.name], anySolo)}
                         colourToken={stem.colourToken}
                         onSeek={(t) => void engine.seek(t)}
@@ -262,43 +261,55 @@ export default function StudioPage() {
                     </div>
                   </div>
                 ))}
+                <LaneOverlay
+                  duration={state.duration}
+                  position={state.position}
+                  loop={state.loop}
+                  pendingLoopStart={state.pendingLoopStart}
+                />
               </div>
             )}
             {state.status === "ready" && !state.stems && (
-              <div className="lane">
-                <div className="lane-tag">
-                  <div
-                    className="lane-dot"
-                    style={{
-                      background: separating
-                        ? "var(--engrave-dim)"
-                        : "var(--stem-vocals)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      color: separating
-                        ? "var(--engrave-dim)"
-                        : "var(--stem-vocals)",
-                    }}
-                  >
-                    Track
-                  </span>
+              <div className="deck-lanes">
+                <div className="lane">
+                  <div className="lane-tag">
+                    <div
+                      className="lane-dot"
+                      style={{
+                        background: separating
+                          ? "var(--engrave-dim)"
+                          : "var(--stem-vocals)",
+                      }}
+                    />
+                    <span
+                      style={{
+                        color: separating
+                          ? "var(--engrave-dim)"
+                          : "var(--stem-vocals)",
+                      }}
+                    >
+                      Track
+                    </span>
+                  </div>
+                  <div className="lane-wave">
+                    <WaveformLane
+                      peaks={engine.peaks}
+                      duration={state.duration}
+                      loop={state.loop}
+                      muted={state.muted}
+                      colourToken={
+                        separating ? "--engrave-dim" : "--stem-vocals"
+                      }
+                      onSeek={(t) => void engine.seek(t)}
+                    />
+                  </div>
                 </div>
-                <div className="lane-wave">
-                  <WaveformLane
-                    peaks={engine.peaks}
-                    duration={state.duration}
-                    position={state.position}
-                    loop={state.loop}
-                    pendingLoopStart={state.pendingLoopStart}
-                    muted={state.muted}
-                    colourToken={
-                      separating ? "--engrave-dim" : "--stem-vocals"
-                    }
-                    onSeek={(t) => void engine.seek(t)}
-                  />
-                </div>
+                <LaneOverlay
+                  duration={state.duration}
+                  position={state.position}
+                  loop={state.loop}
+                  pendingLoopStart={state.pendingLoopStart}
+                />
               </div>
             )}
             {state.status !== "ready" && (

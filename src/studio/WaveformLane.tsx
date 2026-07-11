@@ -5,11 +5,9 @@ export interface WaveformLaneProps {
   /** Max-abs peaks from computePeaks. */
   peaks: Float32Array | null;
   duration: number;
-  /** Playhead position, seconds. */
-  position: number;
+  /** Loop region, used for the in/out-of-loop bar opacity states. */
   loop: LoopRegion | null;
-  /** Armed first loop point awaiting its partner, seconds. */
-  pendingLoopStart: number | null;
+  /** Silenced (muted or solo-excluded): bars dim to 0.16 per spec 4.9. */
   muted: boolean;
   /** CSS custom property holding the stem identity colour. */
   colourToken?: string;
@@ -20,30 +18,18 @@ const BAR_WIDTH = 2;
 const BAR_PITCH = 3;
 
 /** 4.9 Waveform lane: 52px well, 2px bars at 3px pitch, canvas at 2x.
- *  Redraw only on data/loop/size changes; the playhead is a transformed
- *  element, never a canvas repaint. */
+ *  Redraw only on data/loop/size changes. The playhead and loop wash are
+ *  NOT drawn here: they live in LaneOverlay, drawn once across all lanes. */
 export function WaveformLane({
   peaks,
   duration,
-  position,
   loop,
-  pendingLoopStart,
   muted,
   colourToken = "--stem-vocals",
   onSeek,
 }: WaveformLaneProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const playheadRef = useRef<HTMLDivElement>(null);
-
-  // Playhead moves by transform, never a canvas repaint (spec 4.9).
-  useEffect(() => {
-    const wrap = wrapRef.current;
-    const head = playheadRef.current;
-    if (!wrap || !head) return;
-    const x = duration > 0 ? (position / duration) * wrap.clientWidth : 0;
-    head.style.transform = `translateX(${x}px)`;
-  }, [position, duration]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -83,9 +69,6 @@ export function WaveformLane({
     return () => observer.disconnect();
   }, [peaks, duration, loop, muted, colourToken]);
 
-  const pct = (seconds: number) =>
-    duration > 0 ? (seconds / duration) * 100 : 0;
-
   return (
     <div
       ref={wrapRef}
@@ -107,51 +90,6 @@ export function WaveformLane({
       }}
     >
       <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
-      {loop && (
-        <div
-          data-testid="loop-region"
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: `${pct(loop.start)}%`,
-            width: `${pct(loop.end - loop.start)}%`,
-            background: "color-mix(in srgb, var(--stem-vocals) 9%, transparent)",
-            borderLeft: "1px solid color-mix(in srgb, var(--stem-vocals) 85%, transparent)",
-            borderRight: "1px solid color-mix(in srgb, var(--stem-vocals) 85%, transparent)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {pendingLoopStart !== null && !loop && (
-        <div
-          data-testid="loop-pending-marker"
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: `${pct(pendingLoopStart)}%`,
-            width: 1,
-            background: "var(--led-amber)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      <div
-        ref={playheadRef}
-        data-testid="playhead"
-        style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 1.5,
-          background: "var(--playhead)",
-          boxShadow: "0 0 6px rgba(255,255,255,0.5)",
-          pointerEvents: "none",
-          willChange: "transform",
-        }}
-      />
     </div>
   );
 }
