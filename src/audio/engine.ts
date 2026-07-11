@@ -469,6 +469,25 @@ export class PracticeEngine {
     return this.tapLoopPoint();
   }
 
+  /** Explicit A control: (re)arms the loop start at the playhead. Any
+   *  engaged loop is released so the pair can be re-placed. */
+  async setLoopPointA(): Promise<void> {
+    if (this.state.status !== "ready") return;
+    this.set({ pendingLoopStart: this.state.position, loop: null });
+    await this.applySchedule();
+  }
+
+  /** Explicit B control: completes the loop from the armed A point to the
+   *  playhead. No-op until A is armed. */
+  async setLoopPointB(): Promise<void> {
+    const { status, pendingLoopStart, position, duration } = this.state;
+    if (status !== "ready" || pendingLoopStart === null) return;
+    const region = normaliseLoop(pendingLoopStart, position, duration);
+    if (!region) return;
+    this.set({ loop: region, pendingLoopStart: null });
+    await this.applySchedule();
+  }
+
   async clearLoop(): Promise<void> {
     this.set({ loop: null, pendingLoopStart: null });
     await this.applySchedule();

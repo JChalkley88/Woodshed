@@ -305,10 +305,12 @@ export default function StudioPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // The loop LCD doubles as state feedback: NO LOOP, then SET B once A is
+  // armed, then the in/out times.
   const loopLcd = state.loop
     ? `IN  ${formatTime(state.loop.start)}\nOUT ${formatTime(state.loop.end)}`
     : state.pendingLoopStart !== null
-      ? `IN  ${formatTime(state.pendingLoopStart)}\nOUT --:--.-`
+      ? `IN  ${formatTime(state.pendingLoopStart)}\nSET B`
       : "NO LOOP";
 
   const anySolo = state.stems
@@ -681,6 +683,32 @@ export default function StudioPage() {
                     {loopLcd}
                   </span>
                 </LCD>
+                <div className="loop-ab">
+                  <HardwareButton
+                    label="A"
+                    led="amber"
+                    on={state.pendingLoopStart !== null || state.loop !== null}
+                    momentary
+                    ariaLabel="Set loop start"
+                    onChange={() => void engine.setLoopPointA()}
+                  />
+                  <HardwareButton
+                    label="B"
+                    led="amber"
+                    on={state.loop !== null}
+                    momentary
+                    ariaLabel="Set loop end"
+                    onChange={() => void engine.setLoopPointB()}
+                  />
+                  <HardwareButton
+                    label="CLR"
+                    led="red"
+                    on={false}
+                    momentary
+                    ariaLabel="Clear loop"
+                    onChange={() => void engine.clearLoop()}
+                  />
+                </div>
                 <div style={{ marginTop: "auto" }}>
                   <Transport
                     playing={state.playing}
@@ -689,6 +717,9 @@ export default function StudioPage() {
                     onRewind={() => void engine.rewind()}
                     onLoopToggle={() => void engine.toggleLoop()}
                   />
+                </div>
+                <div className="shortcut-hint">
+                  Space play · L loop A/B · S solo · M mute
                 </div>
               </div>
             </div>

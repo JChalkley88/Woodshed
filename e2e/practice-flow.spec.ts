@@ -25,7 +25,7 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
 
   // Tap L twice to arm and engage a loop around the playhead.
   await page.keyboard.press("KeyL");
-  await expect(page.getByTestId("loop-readout")).toContainText("OUT --");
+  await expect(page.getByTestId("loop-readout")).toContainText("SET B");
   await page.waitForTimeout(1200);
   await page.keyboard.press("KeyL");
   await expect(page.getByTestId("loop-readout")).toContainText("OUT 00:");
@@ -80,6 +80,46 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
   const paused = await page.getByTestId("time-readout").textContent();
   await page.waitForTimeout(700);
   expect(await page.getByTestId("time-readout").textContent()).toBe(paused);
+});
+
+test("a loop can be set, engaged, and cleared by clicking A B CLR", async ({
+  page,
+}) => {
+  await page.goto("/?mockSeparation=1");
+  await page
+    .getByTestId("file-input")
+    .setInputFiles("e2e/fixtures/test-tone.wav");
+  await expect(page.getByTestId("song-label")).toHaveText("test-tone.wav");
+  await expect(page.getByTestId("loop-readout")).toHaveText("NO LOOP");
+
+  // A arms the start at the playhead; the LCD prompts for B.
+  await page.getByRole("button", { name: "Set loop start" }).click();
+  await expect(page.getByTestId("loop-readout")).toContainText("SET B");
+
+  // B before any movement is a degenerate loop and stays armed.
+  await page.getByRole("button", { name: "Set loop end" }).click();
+  await expect(page.getByTestId("loop-readout")).toContainText("SET B");
+
+  // Move the playhead, then B completes the loop and the lamp engages.
+  await page.keyboard.press("ArrowRight");
+  await page.getByRole("button", { name: "Set loop end" }).click();
+  await expect(page.getByTestId("loop-readout")).toContainText("IN 00:00.0");
+  await expect(page.getByTestId("loop-readout")).toContainText("OUT 00:05.0");
+  await expect(page.getByTestId("loop-lamp")).toHaveClass(/hw-looplamp-on/);
+
+  // CLR drops it.
+  await page.getByRole("button", { name: "Clear loop" }).click();
+  await expect(page.getByTestId("loop-readout")).toHaveText("NO LOOP");
+
+  // The keyboard L flow is unchanged alongside the buttons.
+  await page.keyboard.press("KeyL");
+  await expect(page.getByTestId("loop-readout")).toContainText("SET B");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("KeyL");
+  await expect(page.getByTestId("loop-readout")).toContainText("OUT");
+
+  // The shortcut hint is engraved on the desk.
+  await expect(page.locator(".shortcut-hint")).toBeVisible();
 });
 
 test("unsupported file gets a friendly error", async ({ page }) => {
