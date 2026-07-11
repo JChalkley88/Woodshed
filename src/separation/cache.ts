@@ -7,10 +7,12 @@
 //              or crashed run resumes from the last completed chunk
 //   songs    — per-song practice state (scribbles, saved loops, last-used
 //              mixer settings), keyed like stems, restored on reopen
+//   chords   — detected chord segments per song (Night 4)
+import type { ChordSegment } from "../analysis/chords.ts";
 import { MODEL_ID, N_CHANNELS, N_STEMS, type StemName } from "./constants.ts";
 
 const DB_NAME = "woodshed";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface StemRecord {
   key: string;
@@ -51,6 +53,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("songs")) {
         db.createObjectStore("songs", { keyPath: "key" });
       }
+      if (!db.objectStoreNames.contains("chords")) {
+        db.createObjectStore("chords", { keyPath: "key" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -66,7 +71,7 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 async function store(
-  name: "stems" | "partials" | "songs",
+  name: "stems" | "partials" | "songs" | "chords",
   mode: IDBTransactionMode,
 ): Promise<IDBObjectStore> {
   const db = await openDb();
@@ -208,6 +213,26 @@ export async function getSongState(
 
 export async function putSongState(record: SongStateRecord): Promise<void> {
   await request((await store("songs", "readwrite")).put(record));
+}
+
+/* ---------------- Chord analysis cache ---------------- */
+
+export interface ChordRecord {
+  key: string;
+  segments: ChordSegment[];
+  createdAt: number;
+}
+
+export async function getChords(key: string): Promise<ChordRecord | undefined> {
+  return request((await store("chords", "readonly")).get(key));
+}
+
+export async function putChords(record: ChordRecord): Promise<void> {
+  await request((await store("chords", "readwrite")).put(record));
+}
+
+export async function deleteChords(key: string): Promise<void> {
+  await request((await store("chords", "readwrite")).delete(key));
 }
 
 /** Expected byte size of a full stem record for a given sample count

@@ -96,6 +96,9 @@ export class PracticeEngine {
   stemPeaks: Record<StemName, Float32Array> | null = null;
   /** Decoded 44.1kHz stereo source, kept until separation completes. */
   private sourceChannels: [Float32Array, Float32Array] | null = null;
+  /** Mono mix retained for chord analysis; survives entering stem mode
+   *  (the stems sum back to the mix, so it is captured there too). */
+  private monoMix: Float32Array | null = null;
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -112,6 +115,12 @@ export class PracticeEngine {
   /** Stereo source data for the separation pipeline (borrowed, not owned). */
   getSourceChannels(): [Float32Array, Float32Array] | null {
     return this.sourceChannels;
+  }
+
+  /** Fresh mono mix copy for the analysis worker (it transfers the
+   *  buffer, so the engine's own copy must not be handed out). */
+  getMonoMixCopy(): Float32Array | null {
+    return this.monoMix ? this.monoMix.slice() : null;
   }
 
   async loadFile(file: File): Promise<void> {
@@ -143,6 +152,10 @@ export class PracticeEngine {
       const right =
         buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left.slice();
       this.sourceChannels = [left, right];
+      this.monoMix = new Float32Array(left.length);
+      for (let i = 0; i < left.length; i++) {
+        this.monoMix[i] = (left[i] + right[i]) / 2;
+      }
       this.peaks = computePeaks([left, right], 4096);
       this.stemPeaks = null;
 
@@ -163,6 +176,7 @@ export class PracticeEngine {
     } catch (err) {
       this.peaks = null;
       this.sourceChannels = null;
+      this.monoMix = null;
       this.set({
         status: "error",
         error: err instanceof Error ? err.message : String(err),
