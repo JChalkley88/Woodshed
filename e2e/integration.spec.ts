@@ -30,6 +30,8 @@ test("separates the fixture for real: four stems, sane output, cached", async ({
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");
 
+  // Night 3: separation is explicit, never a side effect of loading.
+  await page.getByRole("button", { name: "Separate into stems" }).click();
   await expect(page.getByTestId("separation-status")).toBeVisible({
     timeout: 15_000,
   });
@@ -52,12 +54,13 @@ test("separates the fixture for real: four stems, sane output, cached", async ({
   expect(outcome.reconstructionError).not.toBeNull();
   expect(outcome.reconstructionError!).toBeLessThan(0.05);
 
-  // Cached reopen is instant (same profile, fresh page).
+  // Cached reopen is instant (same profile, fresh page), no SEPARATE step.
   await page.goto("/");
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("separate-control")).toHaveCount(0);
   const cached = await page.evaluate(() => window.__woodshedLastOutcome!);
   expect(cached.fromCache).toBe(true);
 });

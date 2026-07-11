@@ -120,6 +120,35 @@ export class Separator {
     worker.postMessage({ type: "warmup" } satisfies WorkerRequest);
   }
 
+  /** Cache-only lookup: hashes the content and returns previously
+   *  separated stems, or null on a miss. Runs no worker and creates no
+   *  session, so it is safe to call as a side effect of loading a song;
+   *  actual separation only ever runs from the SEPARATE control. */
+  async loadCached(
+    channels: [Float32Array, Float32Array],
+    fileName: string,
+  ): Promise<SeparationOutcome | null> {
+    this.set({ ...initialState, phase: "hashing", fileName });
+    const key = await contentKey([channels[0], channels[1]]);
+    this.activeKey = key;
+    const cached = await getStems(key);
+    if (!cached) {
+      this.set({ phase: "idle" });
+      return null;
+    }
+    this.set({ phase: "done", fromCache: true, elapsedMs: 0 });
+    return {
+      key,
+      rows: cached.rows.map((r) => new Int16Array(r)),
+      totalSamples: cached.totalSamples,
+      stemRms: cached.stemRms,
+      reconstructionError: null,
+      ep: cached.ep,
+      fromCache: true,
+      elapsedMs: 0,
+    };
+  }
+
   /** Separates the given stereo 44.1kHz channels, consulting the cache and
    *  any resume partials first. Resolves null when cancelled. */
   async separate(

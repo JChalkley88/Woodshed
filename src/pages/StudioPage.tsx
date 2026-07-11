@@ -45,8 +45,10 @@ function formatMB(bytes: number): string {
   return `${(bytes / 1048576).toFixed(0)} MB`;
 }
 
-/** The Woodshed desk. Night 2: songs separate into four stems on load,
- *  with honest LCD progress, cancel/resume, and an IndexedDB cache. */
+/** The Woodshed desk. Night 3: a loaded song plays immediately on the
+ *  single-track player; separation into four stems runs only from the
+ *  SEPARATE control (cached songs skip straight to stems), with honest LCD
+ *  progress, cancel/resume, and an IndexedDB cache. */
 export default function StudioPage() {
   const state = useSyncExternalStore(engine.subscribe, engine.getState);
   const sep = useSyncExternalStore(separator.subscribe, separator.getState);
@@ -73,6 +75,18 @@ export default function StudioPage() {
 
   useEffect(refreshCachePanel, [refreshCachePanel, sep.phase]);
 
+  const applyOutcome = useCallback(async (outcome: SeparationOutcome) => {
+    await engine.enterStemMode(outcome.rows, outcome.totalSamples);
+    // Test and diagnostics hook (integration spec reads this).
+    window.__woodshedLastOutcome = {
+      stemRms: outcome.stemRms,
+      reconstructionError: outcome.reconstructionError,
+      ep: outcome.ep,
+      fromCache: outcome.fromCache,
+      elapsedMs: outcome.elapsedMs,
+    };
+  }, []);
+
   const startSeparation = useCallback(async () => {
     const channels = engine.getSourceChannels();
     const fileName = engine.getState().fileName;
@@ -81,20 +95,13 @@ export default function StudioPage() {
       [channels[0], channels[1]],
       fileName,
     );
-    if (outcome) {
-      await engine.enterStemMode(outcome.rows, outcome.totalSamples);
-      // Test and diagnostics hook (integration spec reads this).
-      window.__woodshedLastOutcome = {
-        stemRms: outcome.stemRms,
-        reconstructionError: outcome.reconstructionError,
-        ep: outcome.ep,
-        fromCache: outcome.fromCache,
-        elapsedMs: outcome.elapsedMs,
-      };
-    }
-  }, []);
+    if (outcome) await applyOutcome(outcome);
+  }, [applyOutcome]);
 
-  // Separation starts automatically once per loaded song.
+  // On load: cache-only lookup. A previously separated song goes straight
+  // to the four-stem view; anything else stays on the live single-track
+  // player until SEPARATE is pressed. Separation never starts as a side
+  // effect of loading a file.
   useEffect(() => {
     if (
       state.status === "ready" &&
@@ -103,9 +110,18 @@ export default function StudioPage() {
       startedForFile.current !== state.fileName
     ) {
       startedForFile.current = state.fileName;
-      void startSeparation();
+      void (async () => {
+        const channels = engine.getSourceChannels();
+        const fileName = engine.getState().fileName;
+        if (!channels || !fileName) return;
+        const cached = await separator.loadCached(
+          [channels[0], channels[1]],
+          fileName,
+        );
+        if (cached) await applyOutcome(cached);
+      })();
     }
-  }, [state.status, state.stems, state.fileName, startSeparation]);
+  }, [state.status, state.stems, state.fileName, applyOutcome]);
 
   // Global keyboard shortcuts: space play/pause, L loop tap, arrows seek.
   useEffect(() => {
@@ -274,6 +290,22 @@ export default function StudioPage() {
                   : "LOAD A SONG TO BEGIN — MP3 WAV M4A FLAC"}
               </div>
             )}
+            {state.status === "ready" &&
+              !state.stems &&
+              (sep.phase === "idle" || sep.phase === "error") && (
+                <div className="deck-status" data-testid="separate-control">
+                  <span className="label">Four-stem practice</span>
+                  <HardwareButton
+                    label="SEPARATE"
+                    led="amber"
+                    on={false}
+                    momentary
+                    wide
+                    ariaLabel="Separate into stems"
+                    onChange={() => void startSeparation()}
+                  />
+                </div>
+              )}
             {separationLcd && (
               <div className="deck-status" data-testid="separation-status">
                 <LCD variant="readout" ariaLabel="Separation progress">
@@ -284,6 +316,7 @@ export default function StudioPage() {
                     label="STOP"
                     led="red"
                     on={false}
+                    momentary
                     ariaLabel="Cancel separation"
                     onChange={() => separator.cancel()}
                   />
@@ -293,6 +326,7 @@ export default function StudioPage() {
                     label="GO"
                     led="amber"
                     on={false}
+                    momentary
                     ariaLabel="Resume separation"
                     onChange={() => void startSeparation()}
                   />

@@ -11,11 +11,40 @@ async function loadFixture(page: Page) {
   await expect(page.getByTestId("song-label")).toHaveText("test-tone.wav");
 }
 
+async function pressSeparate(page: Page) {
+  await page.getByRole("button", { name: "Separate into stems" }).click();
+}
+
+test("loading a song never auto-separates: the single-track player is live and SEPARATE waits", async ({
+  page,
+}) => {
+  await page.goto("/?mockSeparation=1");
+  await loadFixture(page);
+
+  // The SEPARATE control is offered; nothing heavy has started.
+  await expect(page.getByTestId("separate-control")).toBeVisible();
+  await expect(page.getByTestId("separation-status")).toHaveCount(0);
+
+  // The single-track player is fully usable before separation.
+  await page.keyboard.press("Space");
+  await expect
+    .poll(async () => page.getByTestId("time-readout").textContent())
+    .not.toBe("00:00.0");
+  await page.keyboard.press("Space");
+
+  // Still no separation after playing: it only runs on deliberate press.
+  await expect(page.getByTestId("separation-status")).toHaveCount(0);
+  await pressSeparate(page);
+  await expect(page.getByTestId("separation-status")).toBeVisible();
+  await expect(page.getByTestId("separate-control")).toHaveCount(0);
+});
+
 test("separation shows warming then honest progress, ends with four stem lanes", async ({
   page,
 }) => {
   await page.goto("/?mockSeparation=1");
   await loadFixture(page);
+  await pressSeparate(page);
 
   const status = page.getByTestId("separation-status");
   await expect(status).toContainText("WARMING UP THE SEPARATOR");
@@ -39,6 +68,7 @@ test("separation shows warming then honest progress, ends with four stem lanes",
 test("mute on a stem strip latches and dims its lane", async ({ page }) => {
   await page.goto("/?mockSeparation=1");
   await loadFixture(page);
+  await pressSeparate(page);
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
 
   const muteOther = page.getByRole("button", { name: "Mute Other" });
@@ -51,6 +81,7 @@ test("mute on a stem strip latches and dims its lane", async ({ page }) => {
 test("cancel pauses separation; resume completes it", async ({ page }) => {
   await page.goto("/?mockSeparation=1");
   await loadFixture(page);
+  await pressSeparate(page);
 
   const status = page.getByTestId("separation-status");
   await expect(status).toContainText(/SEPARATING/);
@@ -68,17 +99,21 @@ test("cancel pauses separation; resume completes it", async ({ page }) => {
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
 });
 
-test("a separated song reopens instantly from cache", async ({ page }) => {
+test("a separated song reopens instantly from cache with no SEPARATE step", async ({
+  page,
+}) => {
   await page.goto("/?mockSeparation=1");
   await loadFixture(page);
+  await pressSeparate(page);
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
 
   // Fresh page, same browser profile: the cache must serve the stems with
-  // no separating state at all.
+  // no separating state and no SEPARATE control at all.
   await page.goto("/?mockSeparation=1");
   await loadFixture(page);
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId("separation-status")).toHaveCount(0);
+  await expect(page.getByTestId("separate-control")).toHaveCount(0);
 
   // Purge removes it and frees the store.
   await page
@@ -94,6 +129,7 @@ test("WASM fallback shows the amber warning with an estimate", async ({
 }) => {
   await page.goto("/?mockSeparation=wasm");
   await loadFixture(page);
+  await pressSeparate(page);
   await expect(page.getByTestId("wasm-warning")).toContainText(
     /WEBGPU NOT AVAILABLE/,
   );
