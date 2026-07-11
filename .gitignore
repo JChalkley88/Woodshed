@@ -4,8 +4,10 @@ models/*.onnx
 node_modules/
 dist/
 
-# ORT runtime files are copied from node_modules at dev/build time
+# ORT runtime files are served from node_modules in dev, R2 in production
 public/ort/
+# Staged R2 uploads (scripts/prepare-ort-upload.mjs); node_modules is the source
+r2-upload/
 
 # Test artefacts
 test-results/

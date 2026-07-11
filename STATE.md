@@ -467,3 +467,26 @@ ea840de docs: add Night 5 brief
 ## Closing note
 
 Five nights, one desk. A musician can now find Woodshed, understand it, try the whole core loop free, pay once for export and chords, and practise on a plane. Everything heavy is explicit, everything degraded is honest, and everything private is private by construction rather than by policy. The remaining distance to launch is accounts and uploads, not code: a store, a bucket, a domain, a film, and one manual pass in the other two browsers.
+
+---
+
+## Daylight amendment (11 Jul 2026, post-Night 5): ORT runtime moves to R2
+
+**Problem:** Cloudflare Pages rejects any single file over 25 MiB and the build shipped `ort-wasm-simd-threaded.jsep.wasm` at 25.6 MiB (twice, in fact: once as a Vite-emitted asset from onnxruntime-web's internal `new URL(...)` reference, and once in `dist/ort/` via the build-time copy). Deploys failed.
+
+**Fix:** the ONNX Runtime binaries are no longer shipped in `dist/` at all. `ort.env.wasm.wasmPaths` now points at `ORT_BASE_URL` (src/separation/constants.ts): the dev middleware in development (files served straight from node_modules, so the pair can never skew), and the R2 bucket under a version-pinned prefix in production, overridable via `VITE_ORT_BASE_URL`. A `generateBundle` hook strips the emitted WASM asset, which the runtime never fetches once wasmPaths is set, and the build-time copy into `public/ort` is gone. After build the largest file in `dist/` is 404 KB. The Night 1 execution recipe (WebGPU then WASM, single-threaded creation with graph optimisation disabled, threads raised after creation) is untouched; wasmPaths only changes where the binaries are fetched from, and the real integration test re-ran once to confirm it (50.8s, green).
+
+**Offline promise, adjusted honestly:** the runtime now arrives from R2 rather than the app bundle, so the first separation needs the network for the ORT files as well as the model (both were always first-use downloads in spirit; the model already worked this way). The service worker now caches any `ort-*.wasm`/`ort-*.mjs` fetch cross-origin cache-first, so after the first separation the runtime is local and the cached-once, works-forever behaviour holds exactly as before. Offline e2e re-verified against a fresh production build.
+
+**Version-skew guard:** `scripts/prepare-ort-upload.mjs` stages the upload set from the exact onnxruntime-web build installed in node_modules (currently 1.27.0) under a version-named prefix, and `ORT_VERSION` in constants.ts pins the URL the app requests. Bumping the dependency means re-running the script, uploading the new prefix, and updating `ORT_VERSION` in the same commit; old and new versions coexist in the bucket so deploys never race.
+
+**Human steps (updated launch checklist item 2):** run `node scripts/prepare-ort-upload.mjs`, then upload the four staged files to the existing bucket keeping their paths, so they are served as:
+
+```
+https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/1.27.0/ort-wasm-simd-threaded.jsep.mjs
+https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/1.27.0/ort-wasm-simd-threaded.jsep.wasm   (25.6 MB, WebGPU path)
+https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/1.27.0/ort-wasm-simd-threaded.mjs
+https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/1.27.0/ort-wasm-simd-threaded.wasm        (12.9 MB, CPU path)
+```
+
+Set Content-Type metadata: `application/wasm` on the .wasm files (WebAssembly streaming compilation wants it) and `text/javascript` on the .mjs files (dynamic module import requires a JavaScript MIME type; this one is mandatory, not cosmetic). Bucket CORS must allow the app: AllowedOrigins = the production origin (plus http://localhost:4174 and http://localhost:5173 if you want to test the R2 path locally via VITE_ORT_BASE_URL), AllowedMethods = GET, AllowedHeaders = *. CORS-mode fetches satisfy the app's COEP isolation, and the same rules cover the model object already in the bucket.

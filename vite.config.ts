@@ -1,12 +1,14 @@
 // Based on models/vite-ort-config-reference.txt, with two amendments per the
 // Night 1 brief: ONNX sessions are created with ["webgpu", "wasm"] execution
-// providers (see src/spike/spike.worker.ts), and the onnxruntime-web .wasm
-// files are bundled locally rather than fetched from a CDN, so the product
-// works fully offline.
+// providers (see src/spike/spike.worker.ts), and the onnxruntime-web runtime
+// is never fetched from a third-party CDN. In dev it is served from
+// node_modules; in production from our own R2 bucket (Pages' 25 MiB
+// per-file limit rules out shipping it in dist), where the service worker
+// caches it after first fetch for offline use.
 //
 // Production note: Cloudflare Pages needs the same COOP/COEP headers via a
 // `_headers` file (see public/_headers).
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
@@ -26,19 +28,21 @@ const ORT_RUNTIME_PATTERN = /^ort-.*\.(mjs|wasm)$/;
 /** Makes the ORT runtime available at /ort. In dev the files are served
  *  straight from node_modules by middleware (Vite refuses to serve
  *  public-dir files as JS module imports, and ORT dynamically imports its
- *  .mjs loader). For builds they are copied into public/ort, which is
- *  gitignored; node_modules is the source of truth. */
+ *  .mjs loader).
+ *
+ *  Production does NOT ship the runtime in dist: Cloudflare Pages rejects
+ *  any file over 25 MiB and the jsep WASM is 26.8 MiB. Instead
+ *  ort.env.wasm.wasmPaths points at R2 (ORT_BASE_URL in
+ *  src/separation/constants.ts; upload set built by
+ *  scripts/prepare-ort-upload.mjs), and generateBundle strips the WASM
+ *  asset Vite emits from onnxruntime-web's internal `new URL(...)`
+ *  reference, which the runtime never fetches once wasmPaths is set. */
 function ortRuntimeLocal(): Plugin {
   return {
     name: "woodshed:ort-runtime-local",
-    buildStart() {
-      const outDir = join(__dirname, "public", "ort");
-      mkdirSync(outDir, { recursive: true });
-      const { readdirSync } = require("node:fs") as typeof import("node:fs");
-      for (const file of readdirSync(ortDist)) {
-        if (ORT_RUNTIME_PATTERN.test(file)) {
-          copyFileSync(join(ortDist, file), join(outDir, file));
-        }
+    generateBundle(_options, bundle) {
+      for (const name of Object.keys(bundle)) {
+        if (/ort-.*\.wasm$/.test(name)) delete bundle[name];
       }
     },
     configureServer(server) {

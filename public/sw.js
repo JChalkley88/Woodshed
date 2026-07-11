@@ -58,6 +58,29 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The ONNX Runtime binaries and loaders (served from R2 in production,
+  // so cross-origin): cache-first, populate on first fetch. This keeps
+  // the cached-once, works-forever promise even though the runtime no
+  // longer ships in the app bundle (Pages' 25 MiB per-file limit).
+  if (/\/ort-[^/]*\.(wasm|mjs)$/.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request, { ignoreVary: true }).then(
+        (hit) =>
+          hit ??
+          fetch(request).then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              void caches
+                .open(STATIC_CACHE)
+                .then((cache) => cache.put(request, copy));
+            }
+            return response;
+          }),
+      ),
+    );
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
 
   // Navigations: network-first so deploys land, cached shell offline.

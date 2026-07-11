@@ -57,3 +57,19 @@ export const MODEL_SHA256: string =
 export const MODEL_BYTES = 165_612_636;
 /** Cache key component; bump when the model file changes. */
 export const MODEL_ID = "htdemucs_fp16_v1";
+
+/** Where the ONNX Runtime WASM binaries and their .mjs loaders are
+ *  fetched from (ort.env.wasm.wasmPaths). Cloudflare Pages rejects any
+ *  file over 25 MiB and the jsep WASM is 26.8 MiB, so production serves
+ *  the runtime from R2 under a version-pinned prefix; the files there
+ *  MUST come from the exact onnxruntime-web build in package.json (run
+ *  scripts/prepare-ort-upload.mjs, upload, done). Dev serves the same
+ *  files straight from node_modules via the vite middleware, so the pair
+ *  can never skew in development. The service worker caches these after
+ *  first fetch, preserving offline use after first load. */
+export const ORT_VERSION = "1.27.0";
+export const ORT_BASE_URL: string =
+  (import.meta.env?.VITE_ORT_BASE_URL as string | undefined) ??
+  (import.meta.env?.DEV
+    ? "/ort/"
+    : `https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/${ORT_VERSION}/`);

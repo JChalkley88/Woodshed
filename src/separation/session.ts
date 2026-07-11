@@ -5,8 +5,11 @@
 // raise numThreads after creation for WASM inference (the thread pool
 // initialises lazily). Extracted from the Night 1 spike worker.
 import * as ort from "onnxruntime-web";
+import { ORT_BASE_URL } from "./constants.ts";
 
-ort.env.wasm.wasmPaths = "/ort/";
+// Only changes WHERE the runtime binaries are fetched from (dev
+// middleware or R2); the execution recipe below is untouched.
+ort.env.wasm.wasmPaths = ORT_BASE_URL;
 
 export type ExecutionProvider = "webgpu" | "wasm";
 
