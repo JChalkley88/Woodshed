@@ -20,6 +20,7 @@ import {
   isStemSilenced,
   meterBallistics,
   normaliseLoop,
+  normalisePitch,
   rms,
   speedPercentToRate,
   type LoopRegion,
@@ -47,6 +48,8 @@ export interface EngineState {
   position: number;
   /** Tempo percentage, 50 to 120. */
   speed: number;
+  /** Pitch shift in semitones, -6 to +6; independent of tempo. */
+  pitch: number;
   /** Single-track channel fader level in dB (single mode). */
   gainDb: number;
   muted: boolean;
@@ -67,6 +70,7 @@ const initialState: EngineState = {
   playing: false,
   position: 0,
   speed: 100,
+  pitch: 0,
   gainDb: 0,
   muted: false,
   pendingLoopStart: null,
@@ -302,9 +306,12 @@ export class PracticeEngine {
 
   private async applySchedule(extra: Record<string, number | boolean> = {}) {
     if (!this.stretch) return;
-    const { loop, speed } = this.state;
+    const { loop, speed, pitch } = this.state;
     await this.stretch.schedule({
       rate: speedPercentToRate(speed),
+      // Pitch and rate are independent in signalsmith-stretch; one shared
+      // node keeps all stems shifted in sync.
+      semitones: pitch,
       loopStart: loop ? loop.start : 0,
       loopEnd: loop ? loop.end : 0,
       ...extra,
@@ -353,6 +360,12 @@ export class PracticeEngine {
   setSpeed(percent: number): void {
     const speed = clamp(Math.round(percent), 50, 120);
     this.set({ speed });
+    void this.applySchedule();
+  }
+
+  setPitch(semitones: number): void {
+    const pitch = normalisePitch(semitones);
+    this.set({ pitch });
     void this.applySchedule();
   }
 

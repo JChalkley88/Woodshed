@@ -59,6 +59,21 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
   const nowSeconds = Number(nowMatch[1]) * 60 + Number(nowMatch[2]);
   expect(nowSeconds).toBeLessThanOrEqual(outSeconds + 0.5);
 
+  // Shift down 2 semitones with the pitch knob; tempo must not move
+  // (pitch and speed are independent) and playback keeps running.
+  const pitch = page.getByRole("slider", { name: "Pitch" });
+  await pitch.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("pitch-readout")).toHaveText("-2 st");
+  await expect(page.getByTestId("tempo-readout")).toHaveText("75%");
+  const t2 = await page.getByTestId("time-readout").textContent();
+  await expect
+    .poll(async () => page.getByTestId("time-readout").textContent(), {
+      timeout: 5000,
+    })
+    .not.toBe(t2);
+
   // Space pauses. Let the final position tick land before capturing.
   await page.keyboard.press("Space");
   await page.waitForTimeout(400);

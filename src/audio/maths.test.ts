@@ -8,10 +8,12 @@ import {
   FADER_FLOOR_DB,
   faderPosToDb,
   formatDb,
+  formatPitch,
   formatTime,
   isStemSilenced,
   meterBallistics,
   normaliseLoop,
+  normalisePitch,
   rms,
   samplesToSeconds,
   secondsToSamples,
@@ -70,6 +72,20 @@ describe("solo group", () => {
         isStemSilenced(before[i], false),
       ),
     );
+  });
+});
+
+describe("pitch shift", () => {
+  it("clamps to +/-6 semitones and rounds to whole steps", () => {
+    expect(normalisePitch(0)).toBe(0);
+    expect(normalisePitch(2.4)).toBe(2);
+    expect(normalisePitch(9)).toBe(6);
+    expect(normalisePitch(-9)).toBe(-6);
+  });
+  it("formats the LCD readout with an explicit sign", () => {
+    expect(formatPitch(2)).toBe("+2 st");
+    expect(formatPitch(0)).toBe("0 st");
+    expect(formatPitch(-3)).toBe("-3 st");
   });
 });
 

@@ -6,10 +6,18 @@ import {
   useSyncExternalStore,
 } from "react";
 import { engine } from "../audio/engine.ts";
-import { anySoloEngaged, formatTime, isStemSilenced } from "../audio/maths.ts";
+import {
+  anySoloEngaged,
+  formatPitch,
+  formatTime,
+  isStemSilenced,
+  PITCH_MAX,
+  PITCH_MIN,
+} from "../audio/maths.ts";
 import {
   Fader,
   HardwareButton,
+  Knob,
   LCD,
   LEDMeter,
   ScribbleStrip,
@@ -468,6 +476,23 @@ export default function StudioPage() {
                 />
                 <LCD variant="readout" ariaLabel="Speed">
                   <span data-testid="tempo-readout">{state.speed}%</span>
+                </LCD>
+              </div>
+              <div className="mcol" style={{ flex: 0.7, justifyContent: "center" }}>
+                <Knob
+                  value={state.pitch}
+                  min={PITCH_MIN}
+                  max={PITCH_MAX}
+                  default={0}
+                  step={1}
+                  label="Pitch"
+                  valueText={`${formatPitch(state.pitch)}`}
+                  onChange={(v) => engine.setPitch(v)}
+                />
+                <LCD variant="readout" ariaLabel="Pitch shift">
+                  <span data-testid="pitch-readout">
+                    {formatPitch(state.pitch)}
+                  </span>
                 </LCD>
               </div>
               <div className="mcol">

@@ -48,6 +48,20 @@ export function dbToFaderPos(db: number): number {
 export const SPEED_MIN = 50;
 export const SPEED_MAX = 120;
 
+/* ---------------- Pitch shift ---------------- */
+export const PITCH_MIN = -6;
+export const PITCH_MAX = 6;
+
+/** Pitch shift in whole semitones, clamped to the spec's +/-6 range. */
+export function normalisePitch(semitones: number): number {
+  return clamp(Math.round(semitones), PITCH_MIN, PITCH_MAX);
+}
+
+/** LCD text for the pitch readout: signed semitones. */
+export function formatPitch(semitones: number): string {
+  return semitones > 0 ? `+${semitones} st` : `${semitones} st`;
+}
+
 /** Tempo percentage (50 to 120) to playback rate for the stretch node.
  *  75% -> 0.75. Values outside the fader range are clamped. */
 export function speedPercentToRate(percent: number): number {
