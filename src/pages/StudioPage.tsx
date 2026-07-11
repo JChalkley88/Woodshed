@@ -26,7 +26,11 @@ import {
 } from "../hardware/index.ts";
 import { STEM_DISPLAY, type StemName } from "../separation/constants.ts";
 import { separator, type SeparationOutcome } from "../separation/separator.ts";
-import type { CachedSongSummary } from "../separation/cache.ts";
+import type {
+  CachedSongSummary,
+  SavedLoop,
+  StemMixerSetting,
+} from "../separation/cache.ts";
 import { LaneOverlay } from "../studio/LaneOverlay.tsx";
 import { WaveformLane } from "../studio/WaveformLane.tsx";
 import "../studio/studio.css";
@@ -54,6 +58,12 @@ function formatMB(bytes: number): string {
   return `${(bytes / 1048576).toFixed(0)} MB`;
 }
 
+function defaultScribbles(): Record<StemName, string> {
+  return Object.fromEntries(
+    STEM_DISPLAY.map((s) => [s.name, s.short]),
+  ) as Record<StemName, string>;
+}
+
 /** The Woodshed desk. Night 3: a loaded song plays immediately on the
  *  single-track player; separation into four stems runs only from the
  *  SEPARATE control (cached songs skip straight to stems), with honest LCD
@@ -63,12 +73,28 @@ export default function StudioPage() {
   const sep = useSyncExternalStore(separator.subscribe, separator.getState);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [scribbles, setScribbles] = useState<string[]>(
-    STEM_DISPLAY.map((s) => s.short),
+  const [scribbles, setScribbles] = useState<Record<StemName, string>>(
+    defaultScribbles,
   );
+  const [ch1Scribble, setCh1Scribble] = useState("track");
+  const [savedLoops, setSavedLoops] = useState<SavedLoop[]>([]);
+  const [songKey, setSongKey] = useState<string | null>(null);
   const [cachedSongs, setCachedSongs] = useState<CachedSongSummary[]>([]);
   const [cacheBytes, setCacheBytes] = useState(0);
   const startedForFile = useRef<string | null>(null);
+  /** Song key whose stored state has been applied; gates persistence so
+   *  defaults never clobber a stored record before restore completes. */
+  const restoredKey = useRef<string | null>(null);
+  /** Stem mixer settings waiting for the strips to exist (stems restore
+   *  from cache or arrive after SEPARATE). */
+  const pendingStemMixer = useRef<Record<StemName, StemMixerSetting> | null>(
+    null,
+  );
+  /** Last known stem mixer, persisted even while the desk is showing the
+   *  single-track player so an un-separated reopen keeps old settings. */
+  const lastStemMixer = useRef<Record<StemName, StemMixerSetting> | null>(
+    null,
+  );
 
   const openPicker = () => fileInputRef.current?.click();
 
@@ -127,10 +153,94 @@ export default function StudioPage() {
           [channels[0], channels[1]],
           fileName,
         );
+        // Restore per-song practice state before stems land so the stored
+        // record is never overwritten with defaults.
+        const key = separator.currentKey;
+        const saved = key ? await separator.getSongState(key) : undefined;
+        if (saved) {
+          setScribbles({ ...defaultScribbles(), ...saved.scribbles });
+          setSavedLoops(saved.savedLoops);
+          engine.setSpeed(saved.mixer.speed);
+          engine.setPitch(saved.mixer.pitch);
+          pendingStemMixer.current = saved.mixer.stems;
+          lastStemMixer.current = saved.mixer.stems;
+          if (saved.lastLoop) {
+            await engine.setLoop(saved.lastLoop.start, saved.lastLoop.end);
+          }
+        } else {
+          setScribbles(defaultScribbles());
+          setSavedLoops([]);
+          pendingStemMixer.current = null;
+          lastStemMixer.current = null;
+        }
+        setSongKey(key);
+        restoredKey.current = key;
         if (cached) await applyOutcome(cached);
       })();
     }
   }, [state.status, state.stems, state.fileName, applyOutcome]);
+
+  // Apply restored stem mixer settings once the strips exist.
+  useEffect(() => {
+    if (!state.stems || !pendingStemMixer.current) return;
+    const mix = pendingStemMixer.current;
+    pendingStemMixer.current = null;
+    for (const { name } of STEM_DISPLAY) {
+      const m = mix[name];
+      if (!m) continue;
+      engine.setStemGainDb(name, m.gainDb);
+      engine.setStemMuted(name, m.muted);
+      engine.setStemSoloed(name, m.soloed);
+    }
+  }, [state.stems]);
+
+  // Persist per-song practice state on any meaningful change. The
+  // signature strips meter levels so IndexedDB is not written on every
+  // meter tick.
+  const mixerSig = JSON.stringify({
+    speed: state.speed,
+    pitch: state.pitch,
+    loop: state.loop,
+    stems: state.stems
+      ? STEM_DISPLAY.map(({ name }) => {
+          const s = state.stems![name];
+          return [name, s.gainDb, s.muted, s.soloed];
+        })
+      : null,
+  });
+  useEffect(() => {
+    if (!songKey || restoredKey.current !== songKey) return;
+    const engineState = engine.getState();
+    if (engineState.stems) {
+      lastStemMixer.current = Object.fromEntries(
+        STEM_DISPLAY.map(({ name }) => {
+          const s = engineState.stems![name];
+          return [name, { gainDb: s.gainDb, muted: s.muted, soloed: s.soloed }];
+        }),
+      ) as Record<StemName, StemMixerSetting>;
+    }
+    void separator.putSongState({
+      key: songKey,
+      scribbles,
+      savedLoops,
+      lastLoop: engineState.loop,
+      mixer: {
+        speed: engineState.speed,
+        pitch: engineState.pitch,
+        stems: lastStemMixer.current,
+      },
+      updatedAt: Date.now(),
+    });
+  }, [mixerSig, scribbles, savedLoops, songKey]);
+
+  const saveCurrentLoop = useCallback(() => {
+    const loop = engine.getState().loop;
+    if (!loop) return;
+    setSavedLoops((prev) => [
+      ...prev,
+      { name: `Loop ${prev.length + 1}`, start: loop.start, end: loop.end },
+    ]);
+  }, []);
 
   // Global keyboard shortcuts: space play/pause, L loop tap, arrows seek,
   // M and S mute/solo the focused strip (spec section 8).
@@ -390,7 +500,7 @@ export default function StudioPage() {
 
           <div className="console">
             {state.stems || separating ? (
-              STEM_DISPLAY.map((stem, i) => {
+              STEM_DISPLAY.map((stem) => {
                 const strip = state.stems?.[stem.name];
                 const locked = !strip;
                 return (
@@ -430,11 +540,9 @@ export default function StudioPage() {
                     </div>
                     <ScribbleStrip
                       id={`stem-${stem.name}`}
-                      value={scribbles[i]}
+                      value={scribbles[stem.name]}
                       onChange={(text) =>
-                        setScribbles((prev) =>
-                          prev.map((p, j) => (j === i ? text : p)),
-                        )
+                        setScribbles((prev) => ({ ...prev, [stem.name]: text }))
                       }
                     />
                   </div>
@@ -459,10 +567,8 @@ export default function StudioPage() {
                 </div>
                 <ScribbleStrip
                   id="ch1"
-                  value={scribbles[0]}
-                  onChange={(text) =>
-                    setScribbles((prev) => prev.map((p, j) => (j === 0 ? text : p)))
-                  }
+                  value={ch1Scribble}
+                  onChange={setCh1Scribble}
                 />
               </div>
             )}
@@ -490,7 +596,7 @@ export default function StudioPage() {
                   onChange={(v) => engine.setPitch(v)}
                 />
                 <LCD variant="readout" ariaLabel="Pitch shift">
-                  <span data-testid="pitch-readout">
+                  <span data-testid="pitch-readout" style={{ whiteSpace: "nowrap" }}>
                     {formatPitch(state.pitch)}
                   </span>
                 </LCD>
@@ -536,6 +642,53 @@ export default function StudioPage() {
       </div>
 
       <div className="rack">
+        {state.status === "ready" && songKey && (
+          <div className="rack-panel" data-testid="loop-bank">
+            <span className="label">Loop bank</span>
+            <HardwareButton
+              label="SAVE"
+              led="amber"
+              on={false}
+              momentary
+              ariaLabel="Save current loop"
+              onChange={saveCurrentLoop}
+            />
+            {savedLoops.map((l, i) => (
+              <div className="rack-song" key={`${songKey}-${i}`}>
+                <ScribbleStrip
+                  id={`loop-${songKey}-${i}`}
+                  value={l.name}
+                  onChange={(text) =>
+                    setSavedLoops((prev) =>
+                      prev.map((p, j) => (j === i ? { ...p, name: text } : p)),
+                    )
+                  }
+                />
+                <HardwareButton
+                  label="GO"
+                  led="amber"
+                  on={false}
+                  momentary
+                  ariaLabel={`Engage saved loop ${l.name}`}
+                  onChange={() => void engine.setLoop(l.start, l.end)}
+                />
+                <HardwareButton
+                  label="DEL"
+                  led="red"
+                  on={false}
+                  momentary
+                  ariaLabel={`Delete saved loop ${l.name}`}
+                  onChange={() =>
+                    setSavedLoops((prev) => prev.filter((_, j) => j !== i))
+                  }
+                />
+              </div>
+            ))}
+            {savedLoops.length === 0 && (
+              <span className="label">Set a loop, then SAVE it here</span>
+            )}
+          </div>
+        )}
         <div className="rack-panel" data-testid="cache-rack">
           <span className="label">Stem store</span>
           <LCD variant="readout" ariaLabel="Cache size">

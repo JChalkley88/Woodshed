@@ -1,14 +1,16 @@
-// IndexedDB stem cache and resume-partial store. Hand-rolled promise
-// wrapper rather than the `idb` package because that library is ISC
-// licensed and the project constraint allows MIT/BSD/Apache only.
-// Two stores:
+// IndexedDB stem cache, resume-partial store, and per-song practice state.
+// Hand-rolled promise wrapper rather than the `idb` package because that
+// library is ISC licensed and the project constraint allows MIT/BSD/Apache
+// only. Three stores:
 //   stems    — finished separations keyed by content hash + model id
 //   partials — per-chunk outputs persisted during separation so a cancelled
 //              or crashed run resumes from the last completed chunk
-import { MODEL_ID, N_CHANNELS, N_STEMS } from "./constants.ts";
+//   songs    — per-song practice state (scribbles, saved loops, last-used
+//              mixer settings), keyed like stems, restored on reopen
+import { MODEL_ID, N_CHANNELS, N_STEMS, type StemName } from "./constants.ts";
 
 const DB_NAME = "woodshed";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface StemRecord {
   key: string;
@@ -46,6 +48,9 @@ function openDb(): Promise<IDBDatabase> {
         const store = db.createObjectStore("partials", { keyPath: "id" });
         store.createIndex("bySong", "songKey");
       }
+      if (!db.objectStoreNames.contains("songs")) {
+        db.createObjectStore("songs", { keyPath: "key" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -61,7 +66,7 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 async function store(
-  name: "stems" | "partials",
+  name: "stems" | "partials" | "songs",
   mode: IDBTransactionMode,
 ): Promise<IDBObjectStore> {
   const db = await openDb();
@@ -163,6 +168,46 @@ export async function clearPartials(songKey: string): Promise<void> {
   const s = await store("partials", "readwrite");
   const keys: IDBValidKey[] = await request(s.index("bySong").getAllKeys(songKey));
   for (const key of keys) await request(s.delete(key));
+}
+
+/* ---------------- Per-song practice state ---------------- */
+
+export interface SavedLoop {
+  /** User-editable tape label, 24 chars (spec 4.7 conventions). */
+  name: string;
+  start: number;
+  end: number;
+}
+
+export interface StemMixerSetting {
+  gainDb: number;
+  muted: boolean;
+  soloed: boolean;
+}
+
+export interface SongStateRecord {
+  key: string;
+  /** Scribble-strip text per stem (spec 4.7: per song, 24 chars). */
+  scribbles: Partial<Record<StemName, string>>;
+  savedLoops: SavedLoop[];
+  /** Loop engaged when the song was last used; re-engaged on reopen. */
+  lastLoop: { start: number; end: number } | null;
+  mixer: {
+    speed: number;
+    pitch: number;
+    stems: Record<StemName, StemMixerSetting> | null;
+  };
+  updatedAt: number;
+}
+
+export async function getSongState(
+  key: string,
+): Promise<SongStateRecord | undefined> {
+  return request((await store("songs", "readonly")).get(key));
+}
+
+export async function putSongState(record: SongStateRecord): Promise<void> {
+  await request((await store("songs", "readwrite")).put(record));
 }
 
 /** Expected byte size of a full stem record for a given sample count

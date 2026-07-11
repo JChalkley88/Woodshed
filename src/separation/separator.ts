@@ -8,11 +8,14 @@ import {
   contentKey,
   deleteStems,
   getPartials,
+  getSongState,
   getStems,
   listCachedSongs,
   putPartial,
+  putSongState,
   putStems,
   type CachedSongSummary,
+  type SongStateRecord,
 } from "./cache.ts";
 import { SAMPLE_RATE } from "./constants.ts";
 import type { WorkerRequest, WorkerResponse } from "./separation.worker.ts";
@@ -301,6 +304,12 @@ export class Separator {
       return;
     this.worker?.postMessage({ type: "cancel" } satisfies WorkerRequest);
   }
+
+  /* -------- Per-song practice state (scribbles, loops, mixer) -------- */
+  getSongState = (key: string): Promise<SongStateRecord | undefined> =>
+    getSongState(key);
+  putSongState = (record: SongStateRecord): Promise<void> =>
+    putSongState(record);
 
   /* -------- Cache surface for the settings rack -------- */
   listCachedSongs = (): Promise<CachedSongSummary[]> => listCachedSongs();

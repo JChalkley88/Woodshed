@@ -258,10 +258,16 @@
   gap: 16px;
   flex-wrap: wrap;
 }
+.rack-panel + .rack-panel {
+  margin-top: 10px;
+}
 .rack-song {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.rack-song .hw-scrib {
+  min-width: 110px;
 }
 .rack-song .hw-btn {
   width: auto;
