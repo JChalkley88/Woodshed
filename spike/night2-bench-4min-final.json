@@ -1,0 +1,19 @@
+{
+  "wav": "C:/Users/JChal/AppData/Local/Temp/claude/C--Users-JChal-Projects-Woodshed/aadcace6-c7b7-4cee-9f68-2699a4f591d2/scratchpad/bench-4min.wav",
+  "headless": true,
+  "separationSeconds": 320,
+  "peakHeapMB": 242,
+  "reopenMs": 3248,
+  "outcome": {
+    "stemRms": [
+      0.05915104651246623,
+      0.11452050691949807,
+      0.07996571379655137,
+      0.0004700034810951417
+    ],
+    "reconstructionError": 0.0305,
+    "ep": "wasm",
+    "fromCache": false,
+    "elapsedMs": 316937
+  }
+}

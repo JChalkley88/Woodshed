@@ -9,7 +9,12 @@ import { chromium } from "@playwright/test";
 const wav = process.argv[2];
 const out = process.argv[3] ?? "spike/night2-bench.json";
 const headless = process.argv.includes("--headless");
-if (!wav) throw new Error("usage: node scripts/bench-night2.mjs <wav> <out>");
+// Slice mode: run for at most N seconds, then cancel cleanly and report
+// progress. Partials persist, so repeated slices accumulate to a full
+// separation. Works around execution-time caps on this machine.
+const budgetArg = process.argv.find((a) => a.startsWith("--budget="));
+const budgetSeconds = budgetArg ? Number(budgetArg.split("=")[1]) : null;
+if (!wav) throw new Error("usage: node scripts/bench-night2.mjs <wav> <out> [--headless] [--budget=seconds]");
 
 async function serverUp() {
   try {
@@ -26,7 +31,11 @@ if (!(await serverUp())) {
   }
 }
 
-const browser = await chromium.launch(
+// Persistent profile so IndexedDB (stem cache, resume partials) survives
+// across benchmark slices and launches.
+const profileDir = process.env.BENCH_PROFILE ?? ".bench-profile";
+const browser = await chromium.launchPersistentContext(
+  profileDir,
   headless
     ? { headless: true }
     : { channel: "chrome", headless: false, args: ["--enable-unsafe-webgpu"] },
@@ -69,9 +78,68 @@ const heapTimer = setInterval(async () => {
   }
 }, 5000);
 
-await page
-  .getByTestId("stem-lanes")
-  .waitFor({ state: "visible", timeout: 45 * 60 * 1000 });
+let sliced = false;
+if (budgetSeconds) {
+  setTimeout(async () => {
+    try {
+      const stillGoing = await page
+        .getByRole("button", { name: "Cancel separation" })
+        .isVisible()
+        .catch(() => false);
+      if (stillGoing) {
+        sliced = true;
+        console.log("budget reached; cancelling cleanly (partials persist)");
+        await page.getByRole("button", { name: "Cancel separation" }).click();
+        await page
+          .getByTestId("separation-status")
+          .filter({ hasText: "PAUSED" })
+          .waitFor({ timeout: 30_000 })
+          .catch(() => {});
+        const status = await page
+          .getByTestId("separation-status")
+          .textContent()
+          .catch(() => "");
+        const result = {
+          wav,
+          headless,
+          slice: true,
+          budgetSeconds,
+          statusAtCancel: status?.trim() ?? null,
+          elapsedSeconds: Math.round((Date.now() - t0) / 1000),
+          peakHeapMB,
+        };
+        mkdirSync("spike", { recursive: true });
+        writeFileSync(out, JSON.stringify(result, null, 2));
+        console.log(JSON.stringify(result, null, 2));
+        await browser.close();
+        if (devServer) devServer.kill();
+        process.exit(0);
+      }
+    } catch {
+      /* completed already */
+    }
+  }, budgetSeconds * 1000);
+}
+
+try {
+  await page
+    .getByTestId("stem-lanes")
+    .waitFor({ state: "visible", timeout: 25 * 60 * 1000 });
+} catch (err) {
+  // Dump everything visible before dying so a hang is diagnosable.
+  clearInterval(heapTimer);
+  const dump = await page.evaluate(() => ({
+    status: document.querySelector("[data-testid=separation-status]")?.textContent ?? null,
+    error: document.querySelector("[data-testid=deck-error]")?.textContent ?? null,
+    warning: document.querySelector("[data-testid=wasm-warning]")?.textContent ?? null,
+    song: document.querySelector("[data-testid=song-label]")?.textContent ?? null,
+  }));
+  console.error("TIMED OUT. Page state:", JSON.stringify(dump, null, 2));
+  await page.screenshot({ path: "spike/bench-timeout.png" }).catch(() => {});
+  await browser.close();
+  if (devServer) devServer.kill();
+  process.exit(1);
+}
 clearInterval(heapTimer);
 const separationSeconds = Math.round((Date.now() - t0) / 1000);
 const outcome = await page.evaluate(() => window.__woodshedLastOutcome ?? null);

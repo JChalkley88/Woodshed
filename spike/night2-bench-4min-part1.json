@@ -1,0 +1,9 @@
+{
+  "wav": "C:/Users/JChal/AppData/Local/Temp/claude/C--Users-JChal-Projects-Woodshed/aadcace6-c7b7-4cee-9f68-2699a4f591d2/scratchpad/bench-4min.wav",
+  "headless": true,
+  "slice": true,
+  "budgetSeconds": 450,
+  "statusAtCancel": "SEPARATING 62%  EST 4:38STOP",
+  "elapsedSeconds": 480,
+  "peakHeapMB": 179
+}
