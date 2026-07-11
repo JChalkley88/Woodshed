@@ -144,21 +144,33 @@ export default function StudioPage() {
     };
   }, []);
 
+  /** Covers the whole click-to-phase-change span (including the async
+   *  model probe), so a double click cannot start a competing run before
+   *  the separator's phase hides the control. */
+  const separationBusy = useRef(false);
+
   const startSeparation = useCallback(async () => {
-    const channels = engine.getSourceChannels();
-    const fileName = engine.getState().fileName;
-    if (!channels || !fileName) return;
-    // First use downloads the model (progress on the deck, SHA-256
-    // verified, stored in Cache Storage for offline). Mock flows skip it.
-    if (!isMockWorkerMode()) {
-      const ready = await modelStore.ensure();
-      if (!ready) return;
+    if (separationBusy.current) return;
+    separationBusy.current = true;
+    try {
+      const channels = engine.getSourceChannels();
+      const fileName = engine.getState().fileName;
+      if (!channels || !fileName) return;
+      // First use downloads the model (progress on the deck, SHA-256
+      // verified, stored in Cache Storage for offline). Mock flows skip it.
+      if (!isMockWorkerMode()) {
+        const ready = await modelStore.ensure();
+        if (!ready) return;
+      }
+      const outcome: SeparationOutcome | null = await separator.separate(
+        [channels[0], channels[1]],
+        fileName,
+      );
+      if (outcome) await applyOutcome(outcome);
+    } finally {
+      // Completion, cancel, or error alike: the next press must work.
+      separationBusy.current = false;
     }
-    const outcome: SeparationOutcome | null = await separator.separate(
-      [channels[0], channels[1]],
-      fileName,
-    );
-    if (outcome) await applyOutcome(outcome);
   }, [applyOutcome]);
 
   // On load: cache-only lookup. A previously separated song goes straight

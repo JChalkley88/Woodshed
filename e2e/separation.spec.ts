@@ -126,6 +126,26 @@ test("a separated song reopens instantly from cache with no SEPARATE step", asyn
   );
 });
 
+test("double-pressing SEPARATE never starts a competing run", async ({
+  page,
+}) => {
+  await page.goto("/studio?mockSeparation=1");
+  await loadFixture(page);
+
+  // The live failure shape: two presses land before the phase change
+  // hides the control, two runs interleave on one ORT session, and the
+  // second run throws mid-flight. Guarded, a double press must behave
+  // exactly like a single one.
+  await page
+    .getByRole("button", { name: "Separate into stems" })
+    .dblclick({ delay: 30 });
+  await expect(page.getByTestId("separation-status")).toHaveCount(1);
+  await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("deck-error")).toHaveCount(0);
+  // Exactly one separation ran: one cache entry, and a clean reopen.
+  await expect(page.getByTestId("cache-rack")).toContainText("test-tone.wav");
+});
+
 test("WASM fallback shows the amber warning with an estimate", async ({
   page,
 }) => {

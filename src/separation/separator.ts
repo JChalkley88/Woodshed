@@ -83,6 +83,11 @@ export class Separator {
   private listeners = new Set<Listener>();
   private worker: Worker | null = null;
   private activeKey: string | null = null;
+  /** The in-flight separation. Re-entrant separate() calls (a double
+   *  click, resume racing a cancel acknowledgement) join this promise
+   *  instead of starting a competing run; the worker serialises as a
+   *  second line of defence. */
+  private inFlight: Promise<SeparationOutcome | null> | null = null;
   private beforeUnload = (e: BeforeUnloadEvent) => {
     e.preventDefault();
   };
@@ -153,8 +158,22 @@ export class Separator {
   }
 
   /** Separates the given stereo 44.1kHz channels, consulting the cache and
-   *  any resume partials first. Resolves null when cancelled. */
-  async separate(
+   *  any resume partials first. Resolves null when cancelled. Idempotent
+   *  while running: a second call joins the in-flight separation. */
+  separate(
+    channels: [Float32Array, Float32Array],
+    fileName: string,
+  ): Promise<SeparationOutcome | null> {
+    if (this.inFlight) return this.inFlight;
+    this.inFlight = this.runSeparation(channels, fileName).finally(() => {
+      // Whatever happened (done, cancelled, error), the next attempt must
+      // start clean; the phase carries the outcome for the UI.
+      this.inFlight = null;
+    });
+    return this.inFlight;
+  }
+
+  private async runSeparation(
     channels: [Float32Array, Float32Array],
     fileName: string,
   ): Promise<SeparationOutcome | null> {

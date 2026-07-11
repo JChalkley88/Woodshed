@@ -16,6 +16,7 @@ import {
   N_STEMS,
   SEGMENT_SAMPLES,
 } from "./constants.ts";
+import { SerialQueue } from "./queue.ts";
 import {
   createDemucsSession,
   runSegment,
@@ -66,6 +67,13 @@ export type WorkerResponse =
 
 let demucsPromise: Promise<DemucsSession> | null = null;
 let cancelRequested = false;
+/** Everything that touches the session runs through this queue: an ORT
+ *  session cannot run two inferences at once ("Session already started"),
+ *  and onmessage is async, so without serialisation a second separate
+ *  request would interleave with a running loop on the same session. A
+ *  request arriving mid-run therefore waits for the current run to finish
+ *  or acknowledge its cancel, then starts clean. */
+const sessionQueue = new SerialQueue();
 
 function post(msg: WorkerResponse, transfer: Transferable[] = []) {
   self.postMessage(msg, transfer);
@@ -249,38 +257,48 @@ async function separate(
   );
 }
 
-self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
+self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const msg = e.data;
   if (msg.type === "cancel") {
+    // Cancels apply to the run in flight, so this must NOT queue: the
+    // flag is read at the next chunk boundary.
     cancelRequested = true;
     return;
   }
   if (msg.type === "warmup") {
-    try {
-      const demucs = await ensureSession();
-      post({ type: "warm", ep: demucs.ep, createMs: demucs.createMs });
-    } catch (err) {
-      post({
-        type: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
+    void sessionQueue.run(async () => {
+      try {
+        const demucs = await ensureSession();
+        post({ type: "warm", ep: demucs.ep, createMs: demucs.createMs });
+      } catch (err) {
+        post({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
     return;
   }
   if (msg.type === "separate") {
-    cancelRequested = false;
-    const started = performance.now();
-    try {
-      await separate(
-        msg.channels,
-        new Map(msg.partials.map((p) => [p.index, p.data])),
-        started,
-      );
-    } catch (err) {
-      post({
-        type: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
+    // If a run is somehow still in flight (the orchestrator also guards),
+    // cancel it so the queued run starts promptly rather than after the
+    // whole previous song.
+    if (sessionQueue.pending > 0) cancelRequested = true;
+    void sessionQueue.run(async () => {
+      cancelRequested = false; // reset only once the previous run has ended
+      const started = performance.now();
+      try {
+        await separate(
+          msg.channels,
+          new Map(msg.partials.map((p) => [p.index, p.data])),
+          started,
+        );
+      } catch (err) {
+        post({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
   }
 };
