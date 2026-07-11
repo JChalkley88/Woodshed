@@ -96,13 +96,35 @@ export class ModelStore {
       return true;
     }
     const cache = await caches.open(MODEL_CACHE_NAME);
-    if (await cache.match(MODEL_URL)) {
+    const hit = await cache.match(MODEL_URL);
+    if (hit) {
+      // Repair entries cached by earlier builds with CORP same-origin,
+      // which a COEP-isolated page rejects for the cross-origin R2 URL.
+      // Rewriting headers in place spares those users a 166MB
+      // re-download.
+      if (
+        hit.headers.get("Cross-Origin-Resource-Policy") !== "cross-origin"
+      ) {
+        await cache.put(
+          MODEL_URL,
+          new Response(await hit.arrayBuffer(), {
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Length": hit.headers.get("Content-Length") ?? "",
+              "Cross-Origin-Resource-Policy": "cross-origin",
+            },
+          }),
+        );
+      }
       this.set({ phase: "ready" });
       return true;
     }
 
     this.set({ phase: "downloading", received: 0, error: null });
-    const response = await fetch(MODEL_URL);
+    // Explicit CORS mode: the model lives on R2 cross-origin in
+    // production, and a CORS-fetched body is what a COEP-isolated page is
+    // allowed to read (the bucket's CORS policy permits the app origin).
+    const response = await fetch(MODEL_URL, { mode: "cors" });
     if (!response.ok || !response.body) {
       throw new Error(`model download failed (HTTP ${response.status})`);
     }
@@ -145,13 +167,21 @@ export class ModelStore {
       );
     }
 
+    // The cached response is synthesised (the original body was consumed
+    // by the hash check), so its headers are ours to get right. It is
+    // served by the service worker for the separation worker's fetch of
+    // the cross-origin R2 URL under COEP isolation, so CORP must say
+    // cross-origin: the previous same-origin value (a leftover from when
+    // the model URL was same-origin dev middleware) made the browser
+    // reject the response outright. Harmless in dev, where the URL is
+    // same-origin and CORP is not consulted.
     await cache.put(
       MODEL_URL,
       new Response(bytes, {
         headers: {
           "Content-Type": "application/octet-stream",
           "Content-Length": String(totalBytes),
-          "Cross-Origin-Resource-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "cross-origin",
         },
       }),
     );
