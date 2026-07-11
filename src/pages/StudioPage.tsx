@@ -37,6 +37,7 @@ import type {
   StemMixerSetting,
 } from "../separation/cache.ts";
 import { analyser } from "../analysis/analyser.ts";
+import { capabilityNotice, detectCapabilities } from "../capabilities.ts";
 import { featureUnlocked, licence } from "../licence/licence.ts";
 import { ChordLane } from "../studio/ChordLane.tsx";
 import { ExportRack } from "../studio/ExportRack.tsx";
@@ -67,6 +68,9 @@ function formatEta(seconds: number | null): string {
 function formatMB(bytes: number): string {
   return `${(bytes / 1048576).toFixed(0)} MB`;
 }
+
+// Detected once; a browser's capabilities do not change mid-session.
+const CAPABILITY_NOTICE = capabilityNotice(detectCapabilities());
 
 function defaultScribbles(): Record<StemName, string> {
   return Object.fromEntries(
@@ -548,6 +552,7 @@ export default function StudioPage() {
             {state.status === "ready" &&
               !state.stems &&
               model.phase !== "downloading" &&
+              CAPABILITY_NOTICE?.level !== "blocked" &&
               (sep.phase === "idle" || sep.phase === "error") && (
                 <div className="deck-status" data-testid="separate-control">
                   <span className="label">Four-stem practice</span>
@@ -605,6 +610,20 @@ export default function StudioPage() {
                 SAME QUALITY. EST {formatEta(sep.etaSeconds)}
               </div>
             )}
+            {CAPABILITY_NOTICE &&
+              (CAPABILITY_NOTICE.level === "blocked" ? (
+                <div
+                  className="deck-error"
+                  role="alert"
+                  data-testid="capability-notice"
+                >
+                  {CAPABILITY_NOTICE.message}
+                </div>
+              ) : (
+                <div className="deck-warning" data-testid="capability-notice">
+                  {CAPABILITY_NOTICE.message}
+                </div>
+              ))}
           </div>
 
           <div className="console">
