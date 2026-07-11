@@ -293,3 +293,87 @@ Load a song, press SEPARATE, four stems (cached songs: four stems immediately, n
 ## Recommendation for Night 4
 
 Proceed with the plan's Night 4 scope: chromagram extraction and chord detection in an analysis worker, the chord lane LCD (the deck already reserves its slot in spec section 5), stem export to WAV/zip, and feature-flag plumbing. Two notes from tonight: first, run `integration.spec.ts` once in daylight before Night 4 starts (it is updated for the SEPARATE flow but has not executed since); second, chord analysis is CPU-light compared to separation but should still live in a worker and be cancellable, reusing tonight's pattern of explicit user-initiated heavy work. The licensing "LOCKED" states (spec section 7) become relevant for the first time with export; the greyed-hardware treatment is specified and untested, so budget e2e coverage for it.
+
+---
+
+# STATE.md — Night 4
+
+**Date:** 11 Jul 2026
+**Status:** Every item in the brief shipped in priority order, including both folded-in items (loop discoverability, typefaces). All suites green. One real separation ran tonight, in the baseline e2e check; every other run excluded it.
+
+## Preflight (confirmed before any change)
+
+1. Working tree clean; Night 3 and the Night 4 brief committed and pushed; origin/main matched HEAD (`c05aec3`).
+2. Models present in `models/` (preopt 345MB, fp16 weights 166MB, fp32 original).
+3. Baseline green before any change: typecheck clean, 89 unit tests, and the full e2e suite of 16 including `integration.spec.ts`, which passed at 37.4s (its one permitted real separation tonight). No pre-existing skips.
+
+## What shipped
+
+- **Chord detection (20ede67).** Hand-rolled, licence-clean DSP (no essentia.js, which is AGPL): mean-decimation 44.1kHz to 11.025kHz, radix-2 FFT, Hann-windowed 4096-sample frames at 50 percent hop (~0.19s), pitch-class fold between 65Hz and 2kHz, root-weighted templates for maj/min/dom7 across 12 roots plus a no-chord state driven by median frame energy, and sticky-transition Viterbi smoothing. One tuning finding worth keeping: raw cosine scores of related chords sit too close together (an F frame scores 0.78 on Am), so emissions are cubed before smoothing, otherwise the transition prior flattens a real progression into one chord. Runs in a dedicated analysis worker (not the separation worker), user-initiated, cancellable between frame batches. Results cache per song in a new IndexedDB `chords` store (DB v3) and restore on reopen. UI carries an engraved beta tag.
+- **Chord lane (f0ca171).** Fills the deck slot spec section 5 reserves, above the waveform lanes: one chip per detected segment with the 4.6 LCD treatment (current chord full-bright with outline, past dimmed, upcoming dim), the strip auto-follows the current chord, tapping a chip seeks to its start, and the pre-analysis state is an honest NO CHORDS YET readout beside an explicit CHORDS control.
+- **Stem export (f0ca171).** Rack unit exporting per-stem WAVs at 16 or 24 bit or one zip of all four, via hand-rolled encoders: a 44-byte-header PCM WAV writer and a STORE-method zip with CRC-32 (PCM does not compress usefully, so a stored zip avoids any compression dependency). Rows are read fresh from the IndexedDB stem cache at export time, so nothing large stays resident between exports. Stem names in filenames come from the named-stem mapping, never tensor order.
+- **Licence gate and LOCKED states (f0ca171).** `licence.ts` gates paid features (export, chords) while separation, mixing, solo, loop, tempo, and pitch stay free. Dev builds are permissive so nothing blocks the overnight run; `?locked=1` forces the locked state for testing and `?unlocked=1` forces open in production builds. LOCKED per spec section 7: controls stay physically present, LEDs unlit, readouts showing LOCKED, and any interaction opens a licence panel styled as a rack unit rather than a modal. No payment provider tonight, per the brief. E2e covers locked and unlocked paths, including that a locked export press downloads nothing.
+- **Loop discoverability (b0ee952).** Visible A, B, and CLR buttons in the master LOOP section: A (re)arms the loop start at the playhead, B completes the loop, CLR clears it. The LOOP LCD doubles as state feedback: NO LOOP, then IN time plus SET B once A is armed, then the in/out times. The L-key flow is unchanged, and an engraved shortcut hint (Space, L, S, M) sits under the transport.
+- **Typefaces (875cacb).** Barlow Semi Condensed 500/600, Share Tech Mono 400, and Caveat 600 latin woff2 subsets (SIL OFL) self-hosted in `public/assets/fonts/` under the filenames `fonts.css` has referenced since Night 1. No runtime CDN calls. Confirmed rendering: `document.fonts.check` is true for all three faces on the live desk, and the screenshot shows Barlow engraving, Share Tech Mono LCDs, and Caveat tape labels.
+
+## Done-means check
+
+Chords on a separated song, synced, lit current chord: **works** (real analysis in e2e; chip states and tap-to-seek asserted). Stems export to WAV and zip: **works** (e2e catches the actual downloads: four named WAVs and one zip). LOCKED correct when the flag is off, working when on: **works, e2e both ways**. Loop by clicking as well as L: **works, e2e**. Desk in the three real typefaces: **confirmed**. All tests green, no repeated real separations: **confirmed, one baseline run only**.
+
+## Commits
+
+```
+c05aec3 docs: add Night 4 brief
+20ede67 feat(analysis): hand-rolled chord detection in a dedicated worker
+f0ca171 feat(desk): chord lane, stem export, and the licence gate with LOCKED states
+b0ee952 feat(master): visible A B CLR loop controls with LCD state feedback
+875cacb feat(type): self-host the three spec typefaces
+(+ this STATE.md as the closing commit)
+```
+
+## Tests
+
+**107 unit + 19 mocked e2e + 1 real-separation integration test, all green.** Unit additions: FFT bin placement, pitch-class mapping, decimation, chroma concentration on a synthesised triad, Viterbi blip-smoothing and genuine-change tracking, segment merging, end-to-end chord naming (C, Am, G7, Bb), silence-to-N, cancellation, progression tracking above 80 percent, WAV 16/24-bit headers and interleaving, CRC-32 reference vector, and zip structure. E2e additions: chord analyse/lane/seek/cache-restore flow, WAV and zip export with download assertions, the LOCKED flow, and click-driven loop A/B/CLR. The real separation ran exactly once (baseline, 37.4s); chord analysis in e2e is real DSP but takes ~1s on the 6-second fixture and involves no separation.
+
+## Chord accuracy (honest numbers)
+
+No real recordings exist in this repo (the only fixture is a 6-second synthetic tone), so tonight's accuracy is measured on synthetic multi-voice signals with five-harmonic tones, deterministic noise, and a percussive eighth-note tick as a crude band-mix stand-in:
+
+| Test signal | Frame accuracy (boundary frames excluded) |
+|---|---|
+| 21s pop progression in C (C, G, Am, F, C, G7, C; four-note voicings) | 98.9% |
+| 20s minor changes in A (Am, Dm, Am, E7, Am; 0.2% detune) | 98.9% |
+| I-vi-IV-V7 triads, unit suite floor | above 80% enforced in CI |
+
+These figures say the DSP is correct, not that real-music accuracy is 99 percent: real recordings have broadband vocals, inharmonic drums, and voicings outside maj/min/dom7, all of which will pull accuracy down materially. The feature is labelled beta in the UI accordingly. A daylight listen with two or three real songs is the right next validation, and the segments are cached so it costs one analysis each.
+
+## Decisions and why
+
+1. **Emissions cubed before Viterbi.** The genuinely load-bearing tuning decision (see above); recorded so a future refactor does not "simplify" it away. The unit suite pins the behaviour with a progression test that fails without it.
+2. **Analysis input is a retained mono mix on the engine.** Chord analysis needs the full mix even after the desk switches to stems; the engine keeps one mono Float32Array (~10MB per 4-minute song) captured at load. Cheaper and simpler than reconstructing from stems, and it makes analysis available before separation too.
+3. **Export reads rows from IndexedDB at export time** rather than retaining Int16 rows in the engine: the stems already cost ~340MB resident as worklet floats, and a 1-2s cache read on an explicit export action is the right trade.
+4. **Stored zip, no compression dependency.** PCM WAV compresses poorly with deflate; a STORE-method zip is ~60 lines including CRC-32 and keeps the licence surface at zero.
+5. **One licence flag covers both paid features tonight.** `featureUnlocked(feature)` takes the feature name so per-feature entitlements can arrive on Night 5 without call-site changes, but the implementation is deliberately one boolean until real licences exist.
+6. **`?locked=1` as the test hook** rather than a build flag: e2e must exercise both states against one dev server, and a URL parameter is the same mechanism the mock separation worker already uses.
+7. **Chord chips are buttons wrapping LCDChord** rather than a new hardware component: the chip visual is already spec 4.6; only seek behaviour was added.
+8. **A re-arms rather than errors when a loop is engaged**, matching hardware sampler behaviour (pressing A starts a new loop placement) and keeping the three buttons stateless to learn.
+
+## Known issues
+
+- Chord accuracy on real music is unmeasured (no real recordings available tonight); synthetic numbers above are an upper bound. Daylight listening test recommended.
+- The chord lane renders every segment in one scrolling strip; a very long song with dense changes could get visually crowded. Acceptable for beta; revisit if real songs look noisy.
+- Per-stem WAV export triggers four sequential downloads, which some browsers gate behind a multiple-downloads permission prompt on first use. The zip path avoids this entirely.
+- Licence state is page-load static (URL/dev flag); it becomes stored, reactive state when real licences land on Night 5.
+- Loop bank names still accept editing only after saving; carried from Night 3.
+
+## v1.1 candidate list (record, do not build)
+
+- **Six-stem separation (htdemucs_6s)**: splits guitar and piano into their own stems; confirmed v1.1 per the Night 4 brief. Touches the four-strip desk layout and costs more compute.
+- Stem store compression (WebCodecs audio) to cut the ~169MB per song footprint (carried from Night 2).
+- Chord vocabulary beyond maj/min/dom7 (min7, maj7, sus) plus key detection; the template table makes this additive.
+- Loop count-based speed ramping (build plan Night 3 stretch item, never scheduled).
+- Metronome with count-in (build plan Night 4 stretch item, cut per plan).
+
+## Recommendation for Night 5
+
+Proceed with the plan's Night 5 scope: Lemon Squeezy licence purchase and key validation (the gate and LOCKED plumbing are ready; `featureUnlocked` is the single integration point), PWA/offline (the ORT runtime, models by URL, and self-hosted fonts were all built CDN-free for exactly this), model delivery from Cloudflare R2 (decide between the 345MB preopt and the 166MB baseline: R2 egress cost and first-load time versus the 40s create; consider shipping the 166MB file and paying the one-time create), the landing page, and cross-browser QA (Firefox lacks WebGPU on many configs so the WASM path matters; Safari needs COOP/COEP verification for the threaded WASM path). Two carry-ins: run a daylight chord-accuracy listen on two or three real songs before launch copy mentions chords, and decide the licence storage shape (IndexedDB record, validated on load) before wiring Lemon Squeezy.
