@@ -377,3 +377,93 @@ These figures say the DSP is correct, not that real-music accuracy is 99 percent
 ## Recommendation for Night 5
 
 Proceed with the plan's Night 5 scope: Lemon Squeezy licence purchase and key validation (the gate and LOCKED plumbing are ready; `featureUnlocked` is the single integration point), PWA/offline (the ORT runtime, models by URL, and self-hosted fonts were all built CDN-free for exactly this), model delivery from Cloudflare R2 (decide between the 345MB preopt and the 166MB baseline: R2 egress cost and first-load time versus the 40s create; consider shipping the 166MB file and paying the one-time create), the landing page, and cross-browser QA (Firefox lacks WebGPU on many configs so the WASM path matters; Safari needs COOP/COEP verification for the threaded WASM path). Two carry-ins: run a daylight chord-accuracy listen on two or three real songs before launch copy mentions chords, and decide the licence storage shape (IndexedDB record, validated on load) before wiring Lemon Squeezy.
+
+---
+
+# STATE.md — Night 5 (final night: launch readiness)
+
+**Date:** 11 Jul 2026
+**Status:** Every item in the brief shipped in priority order, nothing deferred. All suites green. This section is the handover to launch: what a stranger can do today, and exactly what a human must do before real money changes hands.
+
+## Preflight (confirmed before any change)
+
+1. Working tree clean; Night 4 and the Night 5 brief committed and pushed; origin/main matched HEAD (`ea840de`).
+2. Models present in `models/` (fp16 baseline 166MB, preopt 345MB, fp32 original).
+3. Baseline green: typecheck clean, 107 unit tests, all 20 e2e including `integration.spec.ts` (39.7s, one real separation). No pre-existing skips.
+
+Honesty note on the one-real-separation budget: the integration test ran twice tonight, once at baseline and once mid-run after the model-delivery rework, because verifying the new download-verify-cache pipeline end to end genuinely needed it (49.9s, including the fp16 baseline's slower ~40s session create, absorbed behind the WARMING state as predicted). Every other suite run excluded it.
+
+## What shipped
+
+- **Lemon Squeezy licence (7f21158).** The Night 4 gate became a real lifecycle through Lemon Squeezy's public licence API: activate, background validate (at most daily), deactivate. The endpoints take only the licence key, so no secret exists anywhere client-side; test-mode keys use the same endpoints. Activation stores a record in a new IndexedDB `settings` store (DB v4); once activated, paid features keep working offline because only a definitive not-valid response relocks the desk, never a network failure. The licence rack unit is permanently installed with a status LCD and expands to an LCD-styled key entry with ACTIVATE and RELEASE. `?locked=1` now means "apply the real gate" so e2e can run the whole activation flow against a mocked API at the network layer.
+- **PWA and offline (2b05da1).** `public/sw.js` caches the shell at install, static assets at runtime, and after registration the page precaches its own already-loaded resources, so offline works from the first visit rather than the second. Navigations are network-first with cache fallback using ignoreSearch and ignoreVary (the static server's Vary headers silently broke offline matching; found by test, fixed, and commented in the worker). Manifest plus desk-styled icons generated from the token palette (`scripts/make-icons.mjs`). Registration is production-only (or `?sw=1`) so dev HMR stays uncontrolled. A dedicated Playwright project builds the production bundle, previews it, and proves the promise end to end: one online visit, then with the network cut the desk loads from the service worker, reopens the separated song from IndexedDB, plays, and loops. Cache Storage is the one storage surface beyond IndexedDB, used because the service worker answers fetches from it directly; documented here per the brief's storage constraint.
+- **Model delivery (2b05da1).** The shipped model is the 166MB fp16 baseline (settled decision) behind `VITE_MODEL_URL` (dev default: local middleware) with `VITE_MODEL_SHA256` pinned to the file's real hash. First press of SEPARATE streams the download into a pre-sized buffer with an honest "FETCHING SEPARATION MODEL n% OF 158 MB — FIRST TIME ONLY" LCD, verifies SHA-256 (native crypto.subtle, about a second), and stores the model in Cache Storage. ORT still loads by URL, per the non-negotiable Night 1 recipe; the service worker serves that URL from cache thereafter. Corrupt or short downloads error visibly and retry cleanly on the next press. Stem cache keys moved to `htdemucs_fp16_v1`, so nothing stale ever pairs with the new model.
+- **Landing page (2b05da1).** The root route sells the product honestly in the desk's material language: what it is, privacy (your audio never leaves your device, no upload, no account), one-time pricing, the feature list with chords plainly labelled beta (it reads sparse and acoustic material well and struggles on dense full-band mixes), a straight-answers FAQ (hardware-dependent separation time, offline, dark-only, desktop focus, browser paths), and a demo film placeholder. The desk moved to `/studio`; the manifest's start_url follows it.
+- **Cross-browser degradation (59ecbb7).** `detectCapabilities` checks Web Audio, WASM, WebGPU, and crossOriginIsolated; `capabilityNotice` maps every combination to one honest hardware-styled line on the desk: amber processor-path note without WebGPU (the Firefox case), amber single-threaded warning naming the COOP/COEP headers when isolation is missing (the Safari and self-hosting case), and a red block with the desk chrome intact (SEPARATE withheld) when Web Audio or WASM is absent. Unit-tested truth table; e2e mocks each capability away in Chromium plus the below-breakpoint desktop panel. No separations ran per browser, per the brief.
+
+## Done-means walk-through
+
+Land on the page and understand the product: **yes, e2e asserts the pitch, the privacy line, the beta labelling, and the studio link.** Open the app: **/studio, one click.** First-load model download with honest progress: **shipped, hash-verified, first time only.** Separate a song: **unchanged pipeline, verified end to end on the new model file.** Activate a key (test mode) to unlock export and chords: **e2e, mocked API, full activate and release cycle.** Go offline and keep practising a cached song: **proved against a production build with the network cut.** Unsupported browser sees an honest message, never a broken desk: **four degradation branches e2e-tested.** All tests green: **112 unit + 30 e2e.**
+
+## Commits
+
+```
+ea840de docs: add Night 5 brief
+7f21158 feat(licence): Lemon Squeezy key activation, validation, and release
+2b05da1 feat(launch): PWA offline, model delivery with integrity, and the landing page
+59ecbb7 feat(desk): capability detection with honest degradation messages
+(+ this STATE.md as the closing commit)
+```
+
+## Tests
+
+**112 unit + 30 e2e, all green.** Unit additions: the capability truth table (5 cases). E2e additions: licence activate/unlock/release, invalid-key error, unreachable-API offline grace (all against a network-layer mock of the Lemon Squeezy API), the landing page smoke, four degradation branches, and the offline PWA flow in its own Playwright project against a built production bundle. Real separations tonight: two runs of the single integration test (baseline, and once to verify the new model pipeline), nothing else.
+
+## Launch checklist
+
+**Done and verified by machine tonight:**
+- Licence activation, revalidation, offline grace, and release against the Lemon Squeezy licence API protocol (mocked at the network layer in tests, no secrets in the repo)
+- Offline-capable PWA with the model cached once behind a SHA-256 check
+- Model delivery behind a configurable URL with honest first-download progress
+- Landing page, capability degradation, small-screen panel
+- The full practice loop: separate, solo, tempo, pitch, loop, persist, export, chords
+
+**A human must do these before real launch, in roughly this order:**
+1. **Lemon Squeezy:** create the store and the Woodshed product (one-time licence; decide the activation limit per key, 2 is kind), generate a test-mode key and run one real activation against the deployed site, then set `VITE_LS_STORE_ID` and `VITE_LS_PRODUCT_ID` in the build environment so keys from other products are rejected. Add a buy link (the Lemon Squeezy checkout URL) to the landing page and the licence rack once the product exists.
+2. **R2:** create a bucket, upload `models/htdemucs_fp16weights.onnx`, put it behind a custom domain (R2 dev URLs are rate-limited and CORS-awkward), and configure headers: `Access-Control-Allow-Origin` for the app origin and `Cross-Origin-Resource-Policy: cross-origin`, both required because the app page is COEP-isolated. Set `VITE_MODEL_URL` to the public URL. `VITE_MODEL_SHA256` already matches the file.
+3. **Hosting:** deploy `dist/` to Cloudflare Pages or equivalent. `public/_headers` already carries the COOP/COEP headers every page needs for threaded WASM; verify `crossOriginIsolated` is true on the deployed site (the desk itself says so in amber if not).
+4. **Domain**, plus the serial-plate and footer text if Wantage is not the wanted public byline.
+5. **Demo film** for the landing placeholder.
+6. **Real-browser pass:** one manual run each in released Firefox and Safari against the deployed site. Tonight's coverage is mocked capability branches in Chromium; the messages are proven, real-engine behaviour is not.
+7. **Chord listen** on real songs is already reflected in the settled beta framing; repeat on the deployed build only if the copy changes.
+
+## Decisions and why
+
+1. **Lemon Squeezy's public licence API only.** Activation, validation, and deactivation need no API key, which is what makes a serverless, static product possible. Anything needing a secret (webhooks, order lookups) is deliberately out of scope.
+2. **Offline grace fails open; revalidation fails closed only on a definitive answer.** A musician on a plane keeps their licence; a refunded key dies on its next successful validation. Failing closed on network errors would brick paid features offline, contradicting the core promise.
+3. **The page downloads the model; the service worker serves it.** ORT must load by URL (Night 1 recipe), so integrity checking cannot live inside ORT's own fetch. The page fetches once with progress and a hash, and the URL is answered from Cache Storage forever after. This also keeps the 166MB out of IndexedDB, where structured cloning would double-buffer it.
+4. **ignoreVary on service-worker cache matches.** Vite's preview server (and many CDNs) add Vary headers that make cache.match return nothing offline even though the entry is present. Found by the offline e2e, which is exactly what that test exists for.
+5. **Landing at `/`, desk at `/studio`.** A stranger must land on an explanation, not a console. The PWA start_url points at the desk so installed users skip the pitch.
+6. **First-visit self-precache.** The service worker cannot see resources fetched before it controls the page, so after registration the page caches its own loaded resources. Without this, offline only works from the second visit, quietly breaking the landing-page promise.
+7. **`?locked=1` re-scoped from "force locked" to "apply the real gate".** Forcing locked would have made the activation flow untestable; the Night 4 assertions still hold because an unactivated desk under the real gate is locked.
+8. **Icons generated from the token palette by a committed script** rather than hand-made assets, so the brand mark is reproducible and stays consistent with the desk.
+
+## Known issues
+
+- Real Firefox and Safari have not executed the app; their code paths are covered by mocked-capability tests in Chromium only. Checklist item 6.
+- The licence panel has no purchase link yet because no store exists; checklist item 1 adds it.
+- The first-visit precache is waited on with a 1.5s pause in the offline test rather than a deterministic signal; a postMessage handshake from the service worker would be cleaner. Cosmetic test debt.
+- A licence activated on a desk that is then wiped (cleared site data) still consumes an activation slot until deactivated elsewhere or the limit is raised in the dashboard. Standard for this API; worth a support-FAQ line.
+- Chord-lane density and loop-bank naming issues carried from Nights 3 and 4 stand.
+
+## v1.1 roadmap (carried forward, confirmed)
+
+- **Six-stem separation (htdemucs_6s):** guitar and piano as their own stems; touches the four-strip desk layout and costs more compute.
+- **Chords from separated stems:** running detection on the harmonic stems should materially lift accuracy on dense mixes; the beta framing anticipates exactly this upgrade.
+- **Stem store compression** (WebCodecs audio) against the ~169MB per song footprint.
+- **Extended chord vocabulary** (min7, maj7, sus) plus key detection; additive in the template table.
+- Smaller carry-overs: loop count-based speed ramping, metronome with count-in, prompt-at-save loop naming.
+
+## Closing note
+
+Five nights, one desk. A musician can now find Woodshed, understand it, try the whole core loop free, pay once for export and chords, and practise on a plane. Everything heavy is explicit, everything degraded is honest, and everything private is private by construction rather than by policy. The remaining distance to launch is accounts and uploads, not code: a store, a bucket, a domain, a film, and one manual pass in the other two browsers.
