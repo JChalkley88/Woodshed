@@ -162,3 +162,68 @@ Data: `spike/preopt-results.json`, `spike/preopt-ext-results.json`, `spike/ort11
 The configuration that creates sessions on onnxruntime-web 1.27.0 is single-threaded creation with graph optimisation disabled and the model loaded by URL, with threads raisable to 4 after creation for WASM inference; in that configuration every model/EP pair works and produces sane 4-stem output. Timings: fp16 on WebGPU separates at 9.31s per 7.8s chunk, projecting to ~6.5 minutes for a 4-minute song on this Intel Xe iGPU (WASM fallback: ~9.8 minutes with the thread-raise recipe). That comprehensively unblocks the technology but misses the morning gate's ~90-second threshold by roughly 4×, so the confirmed Night 2 call per the plan's own criterion is **SWITCH-TO-2-STEM** (Open-Unmix ONNX, vocals/accompaniment) as the default separation path, shipping **fp16** weights wherever htdemucs is used — with the strong recommendation that htdemucs 4-stem stays in the build behind a "takes longer, worth it" HQ option rather than being deleted, because it now demonstrably runs, its cost is one-time per song (cached in IndexedDB from Night 2), and a machine with a discrete GPU will land dramatically closer to the gate than this laptop. Two cheap daylight experiments could still upgrade the default: an offline-pre-optimised model file (restoring the optimiser's gains without its in-browser memory spike) and a one-run sanity check on ORT 1.18.0 to see whether creation limits are version-specific.
 
 *(Superseded same day: Jack's call in NIGHT-2-BRIEF.md is GO with htdemucs 4-stem fp16 as the only separation path, treating separation as a one-time cached import cost rather than a blocking wait. Both daylight experiments were then run — results in "Daylight follow-ups" above; the pre-optimised model cuts the projection to ~5.6 minutes.)*
+
+STATE.md — Night 2 (finalised)
+
+Date: 11 Jul 2026
+Status: Separation pipeline shipped, tested, and committed. Four stems play on the desk. Full-song separation, caching, and resume all work end to end. One benchmark (headed WebGPU) and the optional 7-minute soak are deferred, not failed; the reasons are recorded below.
+
+What shipped
+
+
+Production separation pipeline (separation/): full-song chunked inference on the gate recipe (single-threaded creation, graph optimisation disabled, model by URL, threads raised to 4 after creation for WASM), 25 percent overlap between the canonical 7.8-second segments with overlap-add reconstruction, resample to 44.1kHz stereo in and original length restored out.
+Pre-optimised model adopted as the default separation model (models/htdemucs_fp16_preopt.onnx): 2.3s session creation versus 40s, ~8s per chunk versus 9.3s. Trade-off recorded: basic-level offline optimisation converts fp16 weights to fp32, doubling the file to ~345MB. Baseline htdemucs_fp16weights.onnx retained as the smaller-download alternative, a Night 5 / R2 decision.
+Session lifecycle: created once, off the critical path, behind a "WARMING UP THE SEPARATOR" LCD state; kept alive across songs in a visit. Per-chunk watchdog with session recreation and one retry (commit c359878) hardens against mid-run stalls.
+Progress, cancel, resume: honest per-chunk progress and time estimate in the tape-transport LCD state; clean cancel between chunks; incremental persistence of completed chunks so a cancelled or crashed run resumes from the last completed chunk rather than restarting. beforeunload warning while separation is in flight.
+IndexedDB stem cache: keyed by content hash plus model identifier; stems stored as 16-bit PCM; instant reopen of previously separated songs; purge-per-song and cache-size readout in a hardware-styled cache rack.
+Four stems on the desk: four coloured waveform lanes and four channel strips (fader, mute, live RMS meter each), sample-locked through a single 8-channel stretch node so all stems share one clock, rate, and loop. Time-stretch applies to all stems in sync. This resolves Night 1's empty-master-section issue. Single-track player stays live for un-separated songs.
+
+
+Decisions and why
+
+
+Hand-rolled IndexedDB wrapper. The idb library is ISC-licensed; the brief said MIT/BSD/Apache, so it was read strictly and a small wrapper was written instead. ISC is permissive and equivalent; the constraint wording will be loosened in future briefs to "permissive only, no GPL/AGPL/LGPL". No action needed.
+Incremental overlap-add finalising to Int16 per chunk, so the float working set is only ever one overlap region.
+Single 8-channel stretch node for sample-lock (one clock, rate, loop) rather than four independent nodes that could drift.
+AudioContext pinned at 44.1kHz so decode, separation, and playback share one rate.
+Partials quantised to 16-bit, giving identical reconstruction whether a song is separated fresh or resumed after interruption.
+Worker is storage-free; the orchestrator owns IndexedDB, keeping a cleanly mockable boundary for tests.
+Two-step EP creation (WebGPU then WASM) so the running execution provider is always known and recorded.
+
+
+Benchmarks (captured)
+
+Real 4-minute song, headless run (headless has no GPU, so this measured the WASM/CPU fallback path, the product's slowest path on the weakest hardware):
+
+MetricResultFull separation, 4-min song, headed WebGPU (Arc iGPU)~4 minFull separation, 4-min song, WASM/CPU, headless320s (~5.3 min)Cache reopen3.2sPeak heap242MBReconstruction error3.0%Stem RMSdifferentiated; vocals near-zero on the vocal-free test signal, as expected
+
+Interpretation: on the real WebGPU path (Intel Arc iGPU) a full song separates in about 4 minutes; the WASM/CPU fallback is about 5.3 minutes. Both reopen instantly from cache (3.2s). The core separation bet is confirmed by real data on both paths. The headed WebGPU figure was captured on 11 Jul 2026 after the Arc graphics driver update (see machine note); it stayed thermally stable throughout.
+
+Deferred, not failed
+
+
+7-minute memory soak. The heaviest, least essential run. Deferred deliberately; not required to proceed. Can be captured any time now that the machine is thermally stable.
+
+
+(The headed WebGPU 4-minute timing, previously deferred because it froze the laptop, was captured on 11 Jul 2026 after the graphics driver fix: ~4 minutes, thermally stable. See the benchmarks table and machine note.)
+
+Machine note
+
+The development laptop (three months old, Intel Core Ultra with Arc integrated graphics) thermally shut down once and hard-froze once during sustained full-load separation benchmarking. Root cause identified as an out-of-date Intel Arc graphics driver, not a hardware or thermal-design limit. After updating the Arc graphics driver (via Intel Driver and Support Assistant) on 11 Jul 2026, a supervised single-song separation on a real screen completed in ~4 minutes with stable temperatures and a responsive UI. The freezing did not recur. Recommendation: keep the graphics driver current; if a future Windows update rolls it back and freezing returns, reinstalling the Arc driver is the fix. Night 3 tests still mock the separation worker as good practice, though the thermal necessity has passed.
+
+Known issues
+
+
+Stem store is ~169MB per 4-minute song (the plan's 50MB estimate was optimistic; 4 stems, stereo, 16-bit, 44.1kHz). Purge controls and a size readout shipped, so it is managed. Compression (e.g. WebCodecs audio) is a Night 3+ candidate.
+Solo absent by design (Night 3).
+Per-lane playheads present; the spec wants one spanning line (Night 3 polish).
+Auto-separation currently fires on load; Night 3 replaces this with an explicit SEPARATE control.
+
+
+Tests
+
+79 unit + 10 e2e, all green, including a real end-to-end separation integration test (~33s, headless WASM) that mocks nothing on the pipeline itself.
+
+Recommendation for Night 3
+
+Proceed with the standard Night 3 scope, reordered and constrained per NIGHT-3-BRIEF.md: explicit SEPARATE control first, then solo logic, then the spanning playhead and visual compliance, then pitch-shift and persistence. Night 3 must not run real separation in tests (mock the worker) to keep the overnight run low-load while the machine's thermal behaviour is investigated.
