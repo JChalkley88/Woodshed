@@ -78,6 +78,27 @@ export function isMockWorkerMode(): boolean {
   return new URLSearchParams(window.location.search).has("mockSeparation");
 }
 
+/** The worker stopped sending messages entirely: a hung session.run (GPU
+ *  device loss) or a hung session create. A hung run can never be awaited,
+ *  so the only safe recovery is terminating the worker process and
+ *  resuming from persisted partials. */
+class WorkerHungError extends Error {
+  constructor(afterMs: number) {
+    super(
+      `the separation worker went silent for ${Math.round(afterMs / 1000)}s`,
+    );
+    this.name = "WorkerHungError";
+  }
+}
+
+/** Inactivity floor. Generous by design: it must comfortably exceed a
+ *  cold session create (up to ~120s on modest hardware) and the slowest
+ *  observed CPU chunk (~35s); it stretches further once real chunk times
+ *  are known. A spurious fire is safe (terminate, respawn, resume from
+ *  partials) but costs a session re-create, so err high. Overridable via
+ *  ?sepWatchdogMs= for tests. */
+const WATCHDOG_FLOOR_MS = 240_000;
+
 export class Separator {
   private state: SeparationState = initialState;
   private listeners = new Set<Listener>();
@@ -113,7 +134,12 @@ export class Separator {
       this.worker = isMockWorkerMode()
         ? new Worker(new URL("./separation.mock.worker.ts", import.meta.url), {
             type: "module",
-            name: mockMode === "wasm" ? "mock-wasm" : "mock-webgpu",
+            name:
+              mockMode === "wasm"
+                ? "mock-wasm"
+                : mockMode === "stall"
+                  ? "mock-stall"
+                  : "mock-webgpu",
           })
         : new Worker(new URL("./separation.worker.ts", import.meta.url), {
             type: "module",
@@ -200,12 +226,25 @@ export class Separator {
       };
     }
 
-    const partials = await getPartials(key);
+    let partials = await getPartials(key);
     this.set({ phase: "warming", resumedChunks: partials.size });
     window.addEventListener("beforeunload", this.beforeUnload);
 
     try {
-      const outcome = await this.runWorker(channels, fileName, key, partials);
+      let outcome: SeparationOutcome | null;
+      // A hung worker (silent past the watchdog) is terminated and the run
+      // resumes once from the chunks persisted so far; a second hang on
+      // the same song is a real fault and surfaces as an error.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          outcome = await this.runWorker(channels, fileName, key, partials);
+          break;
+        } catch (err) {
+          if (!(err instanceof WorkerHungError) || attempt >= 1) throw err;
+          partials = await getPartials(key);
+          this.set({ phase: "warming", resumedChunks: partials.size });
+        }
+      }
       if (outcome) {
         await putStems({
           key,
@@ -235,6 +274,14 @@ export class Separator {
     }
   }
 
+  private watchdogFloorMs(): number {
+    const override = new URLSearchParams(window.location.search).get(
+      "sepWatchdogMs",
+    );
+    const parsed = override ? Number(override) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : WATCHDOG_FLOOR_MS;
+  }
+
   private runWorker(
     channels: [Float32Array, Float32Array],
     fileName: string,
@@ -244,8 +291,35 @@ export class Separator {
     const worker = this.ensureWorker();
     return new Promise((resolve, reject) => {
       const pendingWrites: Promise<void>[] = [];
+
+      // Inactivity watchdog: every worker message proves liveness. If the
+      // worker goes silent past the deadline (hung session.run from GPU
+      // device loss, or a hung create), terminate the whole worker: a
+      // hung run can never be awaited, so recovery inside the worker
+      // would race the session, which is exactly the "Session already
+      // started" failure. The deadline stretches with measured chunk
+      // times so slow hardware never trips it.
+      const floorMs = this.watchdogFloorMs();
+      let deadlineMs = floorMs;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      const stopWatchdog = () => clearTimeout(watchdog);
+      const poke = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          this.worker?.terminate();
+          this.worker = null;
+          // Let in-flight partial writes land so the resume skips every
+          // chunk that actually completed.
+          void Promise.all(pendingWrites).then(() =>
+            reject(new WorkerHungError(deadlineMs)),
+          );
+        }, deadlineMs);
+      };
+      poke();
+
       worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const msg = e.data;
+        poke();
         switch (msg.type) {
           case "warming":
             this.set({ phase: "warming" });
@@ -264,6 +338,9 @@ export class Separator {
             );
             break;
           case "progress":
+            if (msg.avgChunkMs !== null) {
+              deadlineMs = Math.max(floorMs, msg.avgChunkMs * 8);
+            }
             this.set({
               phase: "separating",
               done: msg.done,
@@ -272,6 +349,7 @@ export class Separator {
             });
             break;
           case "done":
+            stopWatchdog();
             void Promise.all(pendingWrites).then(() => {
               this.set({ elapsedMs: msg.elapsedMs });
               resolve({
@@ -287,14 +365,19 @@ export class Separator {
             });
             break;
           case "cancelled":
+            stopWatchdog();
             void Promise.all(pendingWrites).then(() => resolve(null));
             break;
           case "error":
+            stopWatchdog();
             reject(new Error(msg.message));
             break;
         }
       };
-      worker.onerror = (e) => reject(new Error(`separation worker: ${e.message}`));
+      worker.onerror = (e) => {
+        stopWatchdog();
+        reject(new Error(`separation worker: ${e.message}`));
+      };
       // Copies are transferred so the caller keeps its channel data (a
       // cancelled run must be resumable with the same input).
       const copies: [Float32Array, Float32Array] = [

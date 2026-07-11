@@ -93,45 +93,39 @@ function ensureSession(): Promise<DemucsSession> {
   return demucsPromise;
 }
 
-/** A GPU device loss leaves session.run pending forever (observed on the
- *  Intel iGPU after ~30 consecutive dispatch-heavy chunks). Guard every
- *  chunk with a timeout scaled from measured chunk times; on a hang or
- *  failure, tear the session down, recreate it (cheap with the
- *  pre-optimised model), and retry the chunk once before giving up. The
- *  partials store means even a hard failure resumes rather than restarts. */
+/** Retries a failed chunk once on a fresh session.
+ *
+ *  Session-lifecycle audit (every create/release/recreate path):
+ *  - ensureSession creates; a failed create nulls the promise (settled).
+ *  - This function releases and recreates ONLY in its catch block, i.e.
+ *    only after the failing run has SETTLED by rejecting. Tearing the
+ *    session down under a still-pending run is forbidden: a new
+ *    session.run alongside the old pending one is exactly the "Session
+ *    already started" failure seen live.
+ *  - The hang case (GPU device loss leaves session.run pending forever;
+ *    observed on the Intel iGPU) therefore CANNOT be recovered inside
+ *    this worker at all, because a hung run never settles and can never
+ *    be awaited. The orchestrator owns it: an inactivity watchdog
+ *    terminates the whole worker (process-level teardown, nothing left
+ *    to race) and resumes from the persisted partials. This replaced the
+ *    old in-worker Promise.race timeout, whose recovery raced the
+ *    pending run and turned a recoverable stall at a slow chunk into a
+ *    fatal error. */
 async function runChunkWithRecovery(
   chunkBuf: Float32Array,
-  chunkTimes: number[],
   chunkIndex: number,
 ): Promise<Float32Array> {
-  const avg =
-    chunkTimes.length > 0
-      ? chunkTimes.reduce((a, b) => a + b, 0) / chunkTimes.length
-      : null;
-  const timeoutMs = Math.max(90_000, avg ? avg * 6 : 0);
   for (let attempt = 0; ; attempt++) {
     const demucs = await ensureSession();
     try {
-      return await Promise.race([
-        runSegment(demucs, chunkBuf, SEGMENT_SAMPLES),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `chunk ${chunkIndex} timed out after ${Math.round(timeoutMs / 1000)}s`,
-                ),
-              ),
-            timeoutMs,
-          ),
-        ),
-      ]);
+      return await runSegment(demucs, chunkBuf, SEGMENT_SAMPLES);
     } catch (err) {
       if (attempt >= 1) throw err;
       post({
         type: "warming",
         message: `chunk ${chunkIndex} failed (${err instanceof Error ? err.message : err}); recreating session and retrying`,
       });
+      // Safe: the run above rejected, so the session is idle (or dead).
       try {
         await (await demucsPromise)?.session.release();
       } catch {
@@ -177,7 +171,7 @@ async function separate(
           .set(channels[c].subarray(plan.start, plan.start + plan.copyLength));
       }
       const t0 = performance.now();
-      const raw = await runChunkWithRecovery(chunkBuf, chunkTimes, plan.index);
+      const raw = await runChunkWithRecovery(chunkBuf, plan.index);
       const ms = performance.now() - t0;
       chunkTimes.push(ms);
       // Quantise once; the accumulator consumes the dequantised values so

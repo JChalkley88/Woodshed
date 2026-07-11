@@ -146,6 +146,32 @@ test("double-pressing SEPARATE never starts a competing run", async ({
   await expect(page.getByTestId("cache-rack")).toContainText("test-tone.wav");
 });
 
+test("a stalled chunk mid-run recovers via the watchdog and resumes from partials", async ({
+  page,
+}) => {
+  // The live failure shape: a chunk hangs mid-run (GPU device loss). The
+  // stall mock goes silent after three chunks on a fresh run; the
+  // orchestrator's inactivity watchdog (shortened via sepWatchdogMs) must
+  // terminate the worker, respawn it, and resume from the persisted
+  // partials, never surfacing SEPARATION FAILED.
+  await page.goto("/studio?mockSeparation=stall&sepWatchdogMs=1500");
+  await loadFixture(page);
+  await pressSeparate(page);
+
+  // The run progresses, then stalls silently.
+  await expect(page.getByTestId("separation-status")).toContainText(
+    /SEPARATING/,
+  );
+
+  // Recovery: the resumed run completes with no error, and the result is
+  // cached like any clean run.
+  await expect(page.getByTestId("stem-lanes")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("deck-error")).toHaveCount(0);
+  await expect(page.getByTestId("cache-rack")).toContainText("test-tone.wav");
+});
+
 test("WASM fallback shows the amber warning with an estimate", async ({
   page,
 }) => {

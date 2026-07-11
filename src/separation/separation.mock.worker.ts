@@ -1,8 +1,10 @@
 /// <reference lib="webworker" />
 // Scripted stand-in for the separation worker, used by Playwright flows
-// (?mockSeparation=1, or ?mockSeparation=wasm to exercise the fallback
-// messaging). Same message protocol, deterministic output, no ORT: stems
-// are scaled copies of the input so the engine gets real playable audio.
+// (?mockSeparation=1, ?mockSeparation=wasm to exercise the fallback
+// messaging, or ?mockSeparation=stall to hang after three chunks on a
+// fresh run so the orchestrator's inactivity watchdog can be tested).
+// Same message protocol, deterministic output, no ORT: stems are scaled
+// copies of the input so the engine gets real playable audio.
 import { float32ToInt16 } from "./chunking.ts";
 import { N_CHANNELS, N_STEMS } from "./constants.ts";
 import type { WorkerRequest, WorkerResponse } from "./separation.worker.ts";
@@ -47,6 +49,13 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     for (let i = 0; i < FAKE_CHUNKS; i++) {
       if (cancelRequested) {
         post({ type: "cancelled", completedChunks: i });
+        return;
+      }
+      // Stall mode: a fresh run (no partials, so not a watchdog resume)
+      // goes silent after three completed chunks, simulating a hung
+      // session.run. The worker stays alive; only the orchestrator's
+      // inactivity watchdog can recover from here.
+      if (self.name === "mock-stall" && skipped.size === 0 && i === 3) {
         return;
       }
       if (!skipped.has(i)) {
