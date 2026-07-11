@@ -52,7 +52,7 @@ test("activating a key unlocks export and chords; releasing relocks", async ({
   page,
 }) => {
   await mockLicenceApi(page);
-  await page.goto("/?mockSeparation=1&locked=1");
+  await page.goto("/studio?mockSeparation=1&locked=1");
   await loadFixture(page);
 
   // Locked before activation.
@@ -81,7 +81,7 @@ test("an invalid key shows the API's error and stays locked", async ({
   page,
 }) => {
   await mockLicenceApi(page, { valid: false });
-  await page.goto("/?mockSeparation=1&locked=1");
+  await page.goto("/studio?mockSeparation=1&locked=1");
   await loadFixture(page);
 
   await openPanelAndActivate(page, "TEST-KEY-BAD");
@@ -96,7 +96,7 @@ test("an activated licence keeps working when the licence API is unreachable", a
   page,
 }) => {
   await mockLicenceApi(page);
-  await page.goto("/?mockSeparation=1&locked=1");
+  await page.goto("/studio?mockSeparation=1&locked=1");
   await loadFixture(page);
   await openPanelAndActivate(page, "TEST-KEY-VALID");
   await expect(page.getByTestId("licence-status")).toHaveText("ACTIVE");
@@ -105,7 +105,7 @@ test("an activated licence keeps working when the licence API is unreachable", a
   // stored activation must keep the desk unlocked (offline grace).
   await page.unrouteAll();
   await page.route(`${API}/**`, (route) => route.abort("internetdisconnected"));
-  await page.goto("/?mockSeparation=1&locked=1");
+  await page.goto("/studio?mockSeparation=1&locked=1");
   await loadFixture(page);
   await expect(page.getByTestId("licence-status")).toHaveText("ACTIVE");
   await expect(page.getByTestId("chord-readout")).not.toHaveText("LOCKED");

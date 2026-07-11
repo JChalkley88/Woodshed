@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 test("load, play, loop, and slow to 75 percent", async ({ page }) => {
   // Mocked separation keeps this flow deterministic; the real pipeline has
   // its own spec (separation.spec.ts, integration.spec.ts).
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
 
   // Load the fixture through the hidden picker input.
   await page
@@ -85,7 +85,7 @@ test("load, play, loop, and slow to 75 percent", async ({ page }) => {
 test("a loop can be set, engaged, and cleared by clicking A B CLR", async ({
   page,
 }) => {
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");
@@ -123,7 +123,7 @@ test("a loop can be set, engaged, and cleared by clicking A B CLR", async ({
 });
 
 test("unsupported file gets a friendly error", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/studio");
   await page.getByTestId("file-input").setInputFiles({
     name: "notes.txt",
     mimeType: "text/plain",

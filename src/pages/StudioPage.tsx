@@ -24,8 +24,13 @@ import {
   TempoFader,
   Transport,
 } from "../hardware/index.ts";
+import { modelStore } from "../model/modelStore.ts";
 import { STEM_DISPLAY, type StemName } from "../separation/constants.ts";
-import { separator, type SeparationOutcome } from "../separation/separator.ts";
+import {
+  isMockWorkerMode,
+  separator,
+  type SeparationOutcome,
+} from "../separation/separator.ts";
 import type {
   CachedSongSummary,
   SavedLoop,
@@ -77,6 +82,7 @@ export default function StudioPage() {
   const state = useSyncExternalStore(engine.subscribe, engine.getState);
   const sep = useSyncExternalStore(separator.subscribe, separator.getState);
   const chords = useSyncExternalStore(analyser.subscribe, analyser.getState);
+  const model = useSyncExternalStore(modelStore.subscribe, modelStore.getState);
   const [licencePanelOpen, setLicencePanelOpen] = useState(false);
   // Subscribing makes featureUnlocked reactive to activation/deactivation.
   useSyncExternalStore(licence.subscribe, licence.getState);
@@ -138,6 +144,12 @@ export default function StudioPage() {
     const channels = engine.getSourceChannels();
     const fileName = engine.getState().fileName;
     if (!channels || !fileName) return;
+    // First use downloads the model (progress on the deck, SHA-256
+    // verified, stored in Cache Storage for offline). Mock flows skip it.
+    if (!isMockWorkerMode()) {
+      const ready = await modelStore.ensure();
+      if (!ready) return;
+    }
     const outcome: SeparationOutcome | null = await separator.separate(
       [channels[0], channels[1]],
       fileName,
@@ -517,6 +529,25 @@ export default function StudioPage() {
             )}
             {state.status === "ready" &&
               !state.stems &&
+              model.phase === "downloading" && (
+                <div className="deck-status" data-testid="model-download">
+                  <LCD variant="readout" ariaLabel="Model download progress">
+                    {`FETCHING SEPARATION MODEL ${
+                      model.totalBytes > 0
+                        ? Math.round((model.received / model.totalBytes) * 100)
+                        : 0
+                    }% OF ${formatMB(model.totalBytes)} — FIRST TIME ONLY`}
+                  </LCD>
+                </div>
+              )}
+            {model.phase === "error" && (
+              <div className="deck-error" role="alert" data-testid="deck-error">
+                MODEL DOWNLOAD FAILED — {model.error}
+              </div>
+            )}
+            {state.status === "ready" &&
+              !state.stems &&
+              model.phase !== "downloading" &&
               (sep.phase === "idle" || sep.phase === "error") && (
                 <div className="deck-status" data-testid="separate-control">
                   <span className="label">Four-stem practice</span>

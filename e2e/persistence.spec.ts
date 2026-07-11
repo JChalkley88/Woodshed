@@ -14,7 +14,7 @@ async function loadFixture(page: Page) {
 test("scribbles, saved loops, and mixer state survive a reload", async ({
   page,
 }) => {
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await loadFixture(page);
   await page.getByRole("button", { name: "Separate into stems" }).click();
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
@@ -54,7 +54,7 @@ test("scribbles, saved loops, and mixer state survive a reload", async ({
 
   // Let the persistence write settle, then reload the desk cold.
   await page.waitForTimeout(500);
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await loadFixture(page);
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 5_000 });
 

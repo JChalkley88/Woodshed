@@ -37,6 +37,23 @@ export const STEM_DISPLAY: {
   { name: "other", label: "Other", short: "gtr + keys", colourToken: "--stem-other" },
 ];
 
-export const MODEL_URL = "/models/htdemucs_fp16_preopt.onnx";
+/** The shipped separation model: the 166MB fp16 baseline (settled Night 5
+ *  decision; smaller download and R2 egress win over the 345MB pre-opt
+ *  file, whose faster create remains documented as a fallback).
+ *
+ *  LAUNCH TODO: set VITE_MODEL_URL to the public R2 URL, e.g.
+ *  https://models.<domain>/htdemucs_fp16weights.onnx. The dev default is
+ *  served by the vite models middleware. */
+export const MODEL_URL: string =
+  (import.meta.env?.VITE_MODEL_URL as string | undefined) ??
+  "/models/htdemucs_fp16weights.onnx";
+/** SHA-256 of the model file, verified on first download. Recompute if
+ *  the file ever changes (PowerShell: Get-FileHash -Algorithm SHA256). */
+export const MODEL_SHA256: string =
+  (import.meta.env?.VITE_MODEL_SHA256 as string | undefined) ??
+  "d05c269d0178d2a72ad484b10b11dd370193fc923201c3b27a99f848745db70a";
+/** Byte size of the model, for progress display when the server omits
+ *  Content-Length. */
+export const MODEL_BYTES = 165_612_636;
 /** Cache key component; bump when the model file changes. */
-export const MODEL_ID = "htdemucs_fp16_preopt_v1";
+export const MODEL_ID = "htdemucs_fp16_v1";

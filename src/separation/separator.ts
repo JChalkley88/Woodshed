@@ -74,7 +74,7 @@ const initialState: SeparationState = {
 type Listener = () => void;
 
 /** True when Playwright drives the flow against the scripted mock worker. */
-function isMockWorkerMode(): boolean {
+export function isMockWorkerMode(): boolean {
   return new URLSearchParams(window.location.search).has("mockSeparation");
 }
 

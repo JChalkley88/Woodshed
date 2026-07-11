@@ -14,7 +14,7 @@ async function loadFixture(page: Page) {
 test("chord analysis runs on demand, fills the lane, seeks on tap, and caches", async ({
   page,
 }) => {
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await loadFixture(page);
 
   // Honest empty state, beta label, and no auto-analysis on load.
@@ -36,13 +36,13 @@ test("chord analysis runs on demand, fills the lane, seeks on tap, and caches", 
   await expect(page.getByTestId("time-readout")).toHaveText("00:00.0");
 
   // Reload: chords restore from the IndexedDB cache with no re-analysis.
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await loadFixture(page);
   await expect(page.getByTestId("chord-lane")).toBeVisible({ timeout: 5_000 });
 });
 
 test("stems export as WAV files and as a zip", async ({ page }) => {
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await loadFixture(page);
   await page.getByRole("button", { name: "Separate into stems" }).click();
   await expect(page.getByTestId("stem-lanes")).toBeVisible({ timeout: 15_000 });
@@ -74,7 +74,7 @@ test("stems export as WAV files and as a zip", async ({ page }) => {
 test("locked state greys the paid controls and opens the licence rack unit", async ({
   page,
 }) => {
-  await page.goto("/?mockSeparation=1&locked=1");
+  await page.goto("/studio?mockSeparation=1&locked=1");
   await loadFixture(page);
 
   // Chord control present but LOCKED; free features untouched.

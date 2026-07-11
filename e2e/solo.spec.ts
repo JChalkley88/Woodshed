@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 // the spec 4.9 dim states.
 
 async function loadSeparated(page: Page) {
-  await page.goto("/?mockSeparation=1");
+  await page.goto("/studio?mockSeparation=1");
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");

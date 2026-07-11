@@ -1,0 +1,22 @@
+{
+  "name": "Woodshed",
+  "short_name": "Woodshed",
+  "description": "A private practice studio for musicians. Split songs into stems, slow them down, loop the hard bars. Everything on your own machine.",
+  "start_url": "/studio",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B0B0C",
+  "theme_color": "#0B0B0C",
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

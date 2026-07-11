@@ -1,0 +1,167 @@
+/* Landing page in the desk's material language. Tokens only. */
+.landing {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 56px 24px 40px;
+  color: var(--engrave);
+}
+.landing-hero {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.landing-brand {
+  display: inline-flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  padding: 12px 28px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  margin-bottom: 28px;
+}
+.landing-name {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--plate-ink);
+}
+.landing-model {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--stem-vocals);
+  margin-top: 3px;
+}
+.landing-strap {
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--engrave);
+  margin: 0 0 14px;
+}
+.landing-sub {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--engrave-dim);
+  max-width: 560px;
+  margin: 0 auto 26px;
+}
+/* CTA as an extruded hardware button, not a web pill. */
+.landing-cta {
+  display: inline-block;
+  padding: 12px 34px;
+  border-radius: 3px;
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, var(--metal-btn-hi), var(--metal-btn-lo));
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: var(--stem-vocals);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: transform 80ms, box-shadow 80ms;
+}
+.landing-cta:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.landing-cta-note {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--engrave-faint);
+  margin-top: 14px;
+}
+.landing-panel {
+  background: linear-gradient(
+    180deg,
+    var(--panel-hi) 0,
+    var(--panel) 10%,
+    var(--panel) 90%,
+    var(--panel-lo) 100%
+  );
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  padding: 26px 30px;
+  margin-bottom: 18px;
+}
+.landing-h2 {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--stem-vocals);
+  margin: 0 0 14px;
+}
+.landing-copy {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--engrave);
+  margin: 0;
+}
+.landing-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.landing-features strong {
+  color: var(--stem-vocals);
+  font-weight: 500;
+}
+.landing-demo {
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.85);
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.landing-demo-text {
+  font-family: var(--font-lcd);
+  font-size: 14px;
+  color: var(--lcd-dim);
+  letter-spacing: 0.14em;
+}
+.landing-faq {
+  margin: 0;
+}
+.landing-faq dt {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--engrave);
+  margin-top: 16px;
+}
+.landing-faq dt:first-child {
+  margin-top: 0;
+}
+.landing-faq dd {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--engrave-dim);
+  margin: 5px 0 0;
+}
+.landing-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--engrave-faint);
+  padding: 8px 4px 0;
+}

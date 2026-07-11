@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 // ONNX pipeline (one chunk). Heavy: session creation plus one inference,
 // WASM in headless Chromium (no WebGPU there), so the timeout is generous.
 // Skipped automatically when the gitignored model file is absent.
-const MODEL_PRESENT = existsSync("models/htdemucs_fp16_preopt.onnx");
+const MODEL_PRESENT = existsSync("models/htdemucs_fp16weights.onnx");
 
 declare global {
   interface Window {
@@ -19,13 +19,13 @@ declare global {
   }
 }
 
-test.skip(!MODEL_PRESENT, "models/htdemucs_fp16_preopt.onnx not present");
+test.skip(!MODEL_PRESENT, "models/htdemucs_fp16weights.onnx not present");
 
 test("separates the fixture for real: four stems, sane output, cached", async ({
   page,
 }) => {
   test.setTimeout(360_000);
-  await page.goto("/");
+  await page.goto("/studio");
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");
@@ -55,7 +55,7 @@ test("separates the fixture for real: four stems, sane output, cached", async ({
   expect(outcome.reconstructionError!).toBeLessThan(0.05);
 
   // Cached reopen is instant (same profile, fresh page), no SEPARATE step.
-  await page.goto("/");
+  await page.goto("/studio");
   await page
     .getByTestId("file-input")
     .setInputFiles("e2e/fixtures/test-tone.wav");

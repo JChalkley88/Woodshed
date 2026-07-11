@@ -1,7 +1,21 @@
 import { expect, test } from "@playwright/test";
 
-test("studio desk renders", async ({ page }) => {
+test("landing page sells the product and opens the studio", async ({
+  page,
+}) => {
   await page.goto("/");
+  await expect(page.locator(".landing-name")).toHaveText("Woodshed");
+  await expect(page.locator("body")).toContainText(
+    "Your audio never leaves your device",
+  );
+  await expect(page.locator("body")).toContainText(/beta/i);
+  await expect(page.locator("body")).toContainText("one-time licence");
+  await page.getByTestId("open-studio").click();
+  await expect(page.getByTestId("deck-message")).toContainText("LOAD A SONG");
+});
+
+test("studio desk renders", async ({ page }) => {
+  await page.goto("/studio");
   await expect(page.locator(".brandplate-name")).toHaveText("Woodshed");
   await expect(page.getByTestId("deck-message")).toContainText("LOAD A SONG");
   await expect(page.getByTestId("time-readout")).toHaveText("00:00.0");
