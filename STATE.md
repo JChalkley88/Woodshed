@@ -227,3 +227,69 @@ Tests
 Recommendation for Night 3
 
 Proceed with the standard Night 3 scope, reordered and constrained per NIGHT-3-BRIEF.md: explicit SEPARATE control first, then solo logic, then the spanning playhead and visual compliance, then pitch-shift and persistence. Night 3 must not run real separation in tests (mock the worker) to keep the overnight run low-load while the machine's thermal behaviour is investigated.
+
+---
+
+# STATE.md — Night 3
+
+**Date:** 11 Jul 2026
+**Status:** Every item in the brief shipped, in the brief's priority order, nothing deferred. All tests green with the separation worker mocked throughout; no real separation, benchmark, or soak ran at any point tonight.
+
+## Preflight (confirmed before any change)
+
+1. Working tree clean apart from the staged NIGHT-3-BRIEF.md, which was committed and pushed first (948fe29); origin/main matched HEAD before work began.
+2. Models present in `models/`: `htdemucs_fp16_preopt.onnx` (345MB) and `htdemucs_fp16weights.onnx` (166MB), plus the fp32 original.
+3. Baseline green before any change: typecheck clean, 79 unit tests passing, 9 e2e passing, dev server serving. The Night 2 real-separation integration spec (`integration.spec.ts`) was deliberately excluded from every run tonight because it performs a real one-chunk separation, which the brief forbids; every later failure is therefore attributable to tonight's work.
+
+## What shipped
+
+- **Fix first, stem-label mapping (215c3c9).** Root cause as the brief suspected: htdemucs output order is fixed (0 drums, 1 bass, 2 other, 3 vocals) but the desk indexed strips, peaks, gains, and meters by display order (vocals first), so every strip showed and controlled the wrong stem. Model output now meets stem names in exactly one place (`namedStemRows`, driven by `HTDEMUCS_OUTPUT_INDEX`); the engine keys all stem state by name and the UI looks stems up by name, never by tensor index. A pinning test asserts each named stem's output index, so a coincidental reorder can never pass.
+- **Explicit SEPARATE control (2c9d82d).** Auto-separation on load is gone. A loaded song stays on the live single-track player; a hardware-styled wide amber SEPARATE button on the deck starts separation on deliberate press only. On load the separator does a cache-only lookup (hash plus IndexedDB read, no worker, no ORT session), so cached songs still skip straight to the four-stem view with no SEPARATE step. An e2e flow pins the guarantee: play first, no separation status until the press.
+- **Solo logic (450ddda).** SOLO (amber) joins MUTE (red) on every strip. The rule is one pure function: silenced = muted OR (any solo engaged AND not soloed). Solos are additive; an explicitly muted stem stays silent while soloed; releasing all solos restores the prior mute state exactly because solo never rewrites mute flags. Lanes and meters read the silenced state (spec 4.9 dim to 0.16); S and M toggle solo and mute on the focused strip.
+- **Spanning playhead and visual compliance (17e92d0).** Per-lane playheads, loop washes, and pending markers replaced by one `LaneOverlay` across the lane column: a single 1.5px near-white playhead moved by transform and one amber loop wash with 1px edges. Audit against spec sections 3 to 7: hex values confined to tokens.css, loop lamp 1.6s steps with reduced-motion fallback, 1:1 slider physics, SVG transport glyphs, locked-strip and progress states as specified. Verified by screenshot on the real desk.
+- **Pitch shift (40154af).** Plus or minus 6 whole semitones through the same shared 8-channel signalsmith-stretch node (its `semitones` parameter is independent of `rate`), so all stems shift in sync and pitch never affects speed or vice versa. A 52px pitch knob with signed LCD readout joins the master section, closing the dead-control gap left on Night 1. The acceptance flow runs 75 percent tempo with -2 st and checks the controls do not disturb each other.
+- **Persistence (3fc64c7).** New `songs` store (IndexedDB v2), keyed by content hash like the stem cache: per-stem scribble text (24 chars, defaults to stem short names), a loop bank of named saved loops, the last engaged loop, and last-used mixer state (fader, mute, solo, tempo, pitch). All of it restores on reopen; stem settings wait for strips to exist so they apply after a cached reopen or a later SEPARATE. The loop bank is a rack unit: SAVE banks the current loop, tape labels rename, GO re-engages, DEL removes.
+
+## Done-means check
+
+Load a song, press SEPARATE, four stems (cached songs: four stems immediately, no SEPARATE): **works, e2e-pinned.** Solo the bass, slow to 75 percent, shift down 2 semitones, loop the bridge: **works, covered by the acceptance flow, the solo spec, and by hand against the mock worker.** One playhead spans all lanes: **works, e2e asserts exactly one.** Saved loops and scribble edits survive a reload: **works, e2e reload flow.** All tests green with no real separation executed: **confirmed.**
+
+## Commits
+
+```
+948fe29 docs: add Night 3 brief
+215c3c9 fix(stems): named stems are the single source of truth for output mapping
+2c9d82d feat(desk): explicit SEPARATE control replaces auto-separation on load
+450ddda feat(mixer): solo with correct solo-group behaviour across the four strips
+17e92d0 feat(deck): single playhead and loop wash span all lanes per spec 4.9
+40154af feat(master): pitch shift, plus or minus 6 semitones, across all stems
+3fc64c7 feat(persistence): per-song loops, scribbles, and mixer state in IndexedDB
+(+ this STATE.md as the closing commit)
+```
+
+## Tests
+
+**89 unit + 15 e2e, all green, zero real separations.** Unit additions: stem-label pinning (named stem to htdemucs output index, row assignment, row-count guard), solo-group truth table (additive solos, mute precedence, release-restores), pitch clamp/round and LCD formatting. E2e additions: never-auto-separate flow, four solo-group flows including keyboard S/M, spanning-playhead count assertion, pitch in the acceptance flow, and the persistence reload flow. The e2e suite runs entirely against the scripted mock worker; `integration.spec.ts` (the Night 2 real-pipeline test, ~33s of real WASM inference) was excluded from every run per the brief's machine-safety constraint and was updated for the new SEPARATE flow so it is ready to run in daylight.
+
+## Decisions and why
+
+1. **Stems keyed by name end to end.** The brief demanded named stems as the single source of truth; the engine state went from arrays to `Record<StemName, ...>` so a bare index can no longer be misused. The audio graph still runs in tensor order internally; `HTDEMUCS_OUTPUT_INDEX` is the one bridge.
+2. **Cache lookup on load is allowed, separation is not.** Hashing plus an IndexedDB read is cheap and side-effect-free, and it is the only way cached songs can skip the SEPARATE step. The worker (and its ORT session) is now only ever created on a deliberate press.
+3. **Warmup no longer fires on page load.** Session creation is itself a heavy operation; under "nothing heavy as a side effect", it now happens inside the SEPARATE press path behind the existing WARMING LCD state. Costs ~2.3s on first press; correct trade under the brief's rules.
+4. **Solo never rewrites mute flags.** "Restore prior mute state" falls out of combining rather than mutating; no saved-state bookkeeping to get wrong.
+5. **Loop wash colour corrected to `--led-amber`.** Spec 4.9 says amber; the Night 2 implementation used the vocals accent. Spec wins over the incumbent.
+6. **Loop bank as a rack unit.** Saved loops need names and actions; a modal or list widget would violate section 10, so it follows the cache rack pattern: tape labels for names, momentary hardware buttons for SAVE/GO/DEL.
+7. **Persistence gated on restore.** Writes are blocked until the stored record has been applied for the current song key, and the persist signature strips meter levels, so defaults never clobber a stored record and IndexedDB is not written 30 times a second.
+8. **HardwareButton gained `momentary` and `wide` props** rather than a new component: SEPARATE/GO/STOP/SAVE/DEL are actions, not latches, and `aria-pressed` on them was semantically wrong.
+
+## Known issues
+
+- The three spec typefaces are still absent (Night 1 carry-over); system fallbacks in use.
+- Loop bank names accept editing only after the loop is saved; there is no prompt-at-save. Acceptable hardware idiom, worth a daylight opinion.
+- `savedLoops` recall does not seek to the loop start; the playhead falls into the loop on its next wrap. Arguably correct tape behaviour; flagging it as a taste call.
+- Stem store size (~169MB per 4-minute song) unchanged from Night 2; compression remains a candidate.
+- CH1 (single-track) scribble text is not persisted; only stem scribbles are per spec 4.7. Trivial to add if wanted.
+
+## Recommendation for Night 4
+
+Proceed with the plan's Night 4 scope: chromagram extraction and chord detection in an analysis worker, the chord lane LCD (the deck already reserves its slot in spec section 5), stem export to WAV/zip, and feature-flag plumbing. Two notes from tonight: first, run `integration.spec.ts` once in daylight before Night 4 starts (it is updated for the SEPARATE flow but has not executed since); second, chord analysis is CPU-light compared to separation but should still live in a worker and be cancellable, reusing tonight's pattern of explicit user-initiated heavy work. The licensing "LOCKED" states (spec section 7) become relevant for the first time with export; the greyed-hardware treatment is specified and untested, so budget e2e coverage for it.
