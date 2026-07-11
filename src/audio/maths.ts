@@ -100,6 +100,32 @@ export function wrapLoopPosition(pos: number, loop: LoopRegion): number {
   return loop.start + ((pos - loop.start) % span);
 }
 
+/* ---------------- Solo group ----------------
+   Standard console behaviour (spec, Night 3): engaging solo on one or more
+   stems silences every non-soloed stem; solos are additive; an explicitly
+   muted stem stays silent even while soloed; releasing all solos restores
+   the prior mute state (which is why mute flags are never rewritten by
+   solo changes, only combined here). */
+export interface SoloMuteFlags {
+  muted: boolean;
+  soloed: boolean;
+}
+
+/** True when the strip should be silent given its own flags and whether
+ *  any solo is engaged across the group. */
+export function isStemSilenced(
+  strip: SoloMuteFlags,
+  anySoloEngaged: boolean,
+): boolean {
+  return strip.muted || (anySoloEngaged && !strip.soloed);
+}
+
+/** True when at least one strip in the group has solo engaged. */
+export function anySoloEngaged(strips: Iterable<SoloMuteFlags>): boolean {
+  for (const s of strips) if (s.soloed) return true;
+  return false;
+}
+
 /* ---------------- Meter ballistics ----------------
    Fast-attack slow-release per spec 4.5 (attack 0.25, release 0.08 per
    frame at ~30fps). */

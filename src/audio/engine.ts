@@ -14,8 +14,10 @@ import {
   type StemName,
 } from "../separation/constants.ts";
 import {
+  anySoloEngaged,
   clamp,
   dbToGain,
+  isStemSilenced,
   meterBallistics,
   normaliseLoop,
   rms,
@@ -27,7 +29,10 @@ export const ACCEPTED_EXTENSIONS = ["mp3", "wav", "m4a", "flac"] as const;
 
 export interface StemStripState {
   gainDb: number;
+  /** Explicit user mute; never rewritten by solo changes. */
   muted: boolean;
+  /** Solo engaged on this strip; combined with mutes via isStemSilenced. */
+  soloed: boolean;
   /** Meter level 0..1 with ballistics applied. */
   level: number;
 }
@@ -180,7 +185,7 @@ export class PracticeEngine {
     const stems = {} as Record<StemName, StemStripState>;
     for (const name of STEM_NAMES) {
       stemPeaks[name] = computePeaks(named[name], 4096);
-      stems[name] = { gainDb: 0, muted: false, level: 0 };
+      stems[name] = { gainDb: 0, muted: false, soloed: false, level: 0 };
     }
     this.stemPeaks = stemPeaks;
     const { position, playing, duration } = this.state;
@@ -276,13 +281,14 @@ export class PracticeEngine {
     this.lastMeterTime = now;
 
     if (this.state.stems) {
+      const anySolo = anySoloEngaged(Object.values(this.state.stems));
       const stems = {} as Record<StemName, StemStripState>;
       for (const name of STEM_NAMES) {
         const strip = this.state.stems[name];
         this.analysers[HTDEMUCS_OUTPUT_INDEX[name]].getFloatTimeDomainData(
           this.meterBlock!,
         );
-        const target = strip.muted
+        const target = isStemSilenced(strip, anySolo)
           ? 0
           : clamp(rms(this.meterBlock!) * 2.2, 0, 1);
         stems[name] = { ...strip, level: meterBallistics(strip.level, target) };
@@ -382,6 +388,16 @@ export class PracticeEngine {
     this.applyStemGains();
   }
 
+  setStemSoloed(name: StemName, soloed: boolean): void {
+    if (!this.state.stems) return;
+    const stems = {
+      ...this.state.stems,
+      [name]: { ...this.state.stems[name], soloed },
+    };
+    this.set({ stems });
+    this.applyStemGains();
+  }
+
   private applyAllGains() {
     if (this.state.stems) this.applyStemGains();
     else if (this.gainNodes[0] && this.ctx) {
@@ -396,10 +412,11 @@ export class PracticeEngine {
 
   private applyStemGains() {
     if (!this.state.stems || !this.ctx) return;
+    const anySolo = anySoloEngaged(Object.values(this.state.stems));
     for (const name of STEM_NAMES) {
       const strip = this.state.stems[name];
       this.gainNodes[HTDEMUCS_OUTPUT_INDEX[name]]?.gain.setTargetAtTime(
-        strip.muted ? 0 : dbToGain(strip.gainDb),
+        isStemSilenced(strip, anySolo) ? 0 : dbToGain(strip.gainDb),
         this.ctx.currentTime,
         0.01,
       );

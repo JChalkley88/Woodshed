@@ -6,7 +6,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { engine } from "../audio/engine.ts";
-import { formatTime } from "../audio/maths.ts";
+import { anySoloEngaged, formatTime, isStemSilenced } from "../audio/maths.ts";
 import {
   Fader,
   HardwareButton,
@@ -16,7 +16,7 @@ import {
   TempoFader,
   Transport,
 } from "../hardware/index.ts";
-import { STEM_DISPLAY } from "../separation/constants.ts";
+import { STEM_DISPLAY, type StemName } from "../separation/constants.ts";
 import { separator, type SeparationOutcome } from "../separation/separator.ts";
 import type { CachedSongSummary } from "../separation/cache.ts";
 import { WaveformLane } from "../studio/WaveformLane.tsx";
@@ -123,7 +123,8 @@ export default function StudioPage() {
     }
   }, [state.status, state.stems, state.fileName, applyOutcome]);
 
-  // Global keyboard shortcuts: space play/pause, L loop tap, arrows seek.
+  // Global keyboard shortcuts: space play/pause, L loop tap, arrows seek,
+  // M and S mute/solo the focused strip (spec section 8).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -135,6 +136,19 @@ export default function StudioPage() {
       } else if (e.key === "l" || e.key === "L") {
         e.preventDefault();
         void engine.tapLoopPoint();
+      } else if (e.key === "m" || e.key === "M" || e.key === "s" || e.key === "S") {
+        const name = target.closest("[data-stem]")?.getAttribute("data-stem") as
+          | StemName
+          | undefined;
+        const stems = engine.getState().stems;
+        if (name && stems) {
+          e.preventDefault();
+          if (e.key === "m" || e.key === "M") {
+            engine.setStemMuted(name, !stems[name].muted);
+          } else {
+            engine.setStemSoloed(name, !stems[name].soloed);
+          }
+        }
       } else if (e.key === "ArrowLeft" && !onSlider) {
         e.preventDefault();
         void engine.seekBy(-5);
@@ -152,6 +166,10 @@ export default function StudioPage() {
     : state.pendingLoopStart !== null
       ? `IN  ${formatTime(state.pendingLoopStart)}\nOUT --:--.-`
       : "NO LOOP";
+
+  const anySolo = state.stems
+    ? anySoloEngaged(Object.values(state.stems))
+    : false;
 
   const separating = sep.phase === "warming" || sep.phase === "separating";
   const pct = sep.total > 0 ? Math.round((sep.done / sep.total) * 100) : 0;
@@ -237,7 +255,7 @@ export default function StudioPage() {
                         position={state.position}
                         loop={state.loop}
                         pendingLoopStart={state.pendingLoopStart}
-                        muted={state.stems![stem.name].muted}
+                        muted={isStemSilenced(state.stems![stem.name], anySolo)}
                         colourToken={stem.colourToken}
                         onSeek={(t) => void engine.seek(t)}
                       />
@@ -361,18 +379,28 @@ export default function StudioPage() {
                     className={`strip${locked ? " strip-locked" : ""}`}
                     key={stem.name}
                     data-testid={`strip-${stem.name}`}
+                    data-stem={stem.name}
                     aria-disabled={locked}
                   >
                     <div className="strip-num" style={{ color: `var(${stem.colourToken})` }}>
                       {stem.label.toUpperCase()}
                     </div>
-                    <HardwareButton
-                      label="MUTE"
-                      led="red"
-                      on={strip?.muted ?? false}
-                      ariaLabel={`Mute ${stem.label}`}
-                      onChange={(on) => engine.setStemMuted(stem.name, on)}
-                    />
+                    <div className="strip-buttons">
+                      <HardwareButton
+                        label="MUTE"
+                        led="red"
+                        on={strip?.muted ?? false}
+                        ariaLabel={`Mute ${stem.label}`}
+                        onChange={(on) => engine.setStemMuted(stem.name, on)}
+                      />
+                      <HardwareButton
+                        label="SOLO"
+                        led="amber"
+                        on={strip?.soloed ?? false}
+                        ariaLabel={`Solo ${stem.label}`}
+                        onChange={(on) => engine.setStemSoloed(stem.name, on)}
+                      />
+                    </div>
                     <div className="faderbay">
                       <Fader
                         value={strip?.gainDb ?? 0}

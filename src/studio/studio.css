@@ -270,6 +270,10 @@
   letter-spacing: 0.2em;
   color: var(--engrave-dim);
 }
+.strip-buttons {
+  display: flex;
+  gap: 6px;
+}
 .faderbay {
   display: flex;
   gap: 9px;

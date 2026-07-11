@@ -90,6 +90,7 @@ export function WaveformLane({
     <div
       ref={wrapRef}
       data-testid="waveform-lane"
+      data-silenced={muted}
       style={{
         position: "relative",
         height: 52,

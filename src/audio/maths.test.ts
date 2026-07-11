@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computePeaks } from "./engine.ts";
 import {
+  anySoloEngaged,
   clamp,
   dbToFaderPos,
   dbToGain,
@@ -8,6 +9,7 @@ import {
   faderPosToDb,
   formatDb,
   formatTime,
+  isStemSilenced,
   meterBallistics,
   normaliseLoop,
   rms,
@@ -16,7 +18,60 @@ import {
   speedPercentToRate,
   stretchedDuration,
   wrapLoopPosition,
+  type SoloMuteFlags,
 } from "./maths.ts";
+
+describe("solo group", () => {
+  const strip = (muted: boolean, soloed: boolean): SoloMuteFlags => ({
+    muted,
+    soloed,
+  });
+
+  it("with no solos engaged, only explicit mutes silence", () => {
+    expect(isStemSilenced(strip(false, false), false)).toBe(false);
+    expect(isStemSilenced(strip(true, false), false)).toBe(true);
+  });
+
+  it("engaging solo silences every non-soloed stem", () => {
+    const group = [strip(false, true), strip(false, false), strip(false, false), strip(false, false)];
+    const anySolo = anySoloEngaged(group);
+    expect(anySolo).toBe(true);
+    expect(isStemSilenced(group[0], anySolo)).toBe(false);
+    expect(isStemSilenced(group[1], anySolo)).toBe(true);
+    expect(isStemSilenced(group[2], anySolo)).toBe(true);
+  });
+
+  it("solos are additive: every soloed stem is audible", () => {
+    const group = [strip(false, true), strip(false, true), strip(false, false), strip(false, false)];
+    const anySolo = anySoloEngaged(group);
+    expect(isStemSilenced(group[0], anySolo)).toBe(false);
+    expect(isStemSilenced(group[1], anySolo)).toBe(false);
+    expect(isStemSilenced(group[2], anySolo)).toBe(true);
+  });
+
+  it("an explicitly muted stem stays silent even while soloed", () => {
+    const group = [strip(true, true), strip(false, false)];
+    const anySolo = anySoloEngaged(group);
+    expect(isStemSilenced(group[0], anySolo)).toBe(true);
+    expect(isStemSilenced(group[1], anySolo)).toBe(true);
+  });
+
+  it("releasing all solos restores the prior mute state", () => {
+    // Mute flags are never rewritten by solo changes, so dropping the solo
+    // flag alone must bring back exactly the pre-solo audibility.
+    const before = [strip(true, false), strip(false, false)];
+    const during = [strip(true, false), strip(false, true)];
+    const anyDuring = anySoloEngaged(during);
+    expect(isStemSilenced(during[0], anyDuring)).toBe(true);
+    const after = during.map((s) => ({ ...s, soloed: false }));
+    const anyAfter = anySoloEngaged(after);
+    after.forEach((s, i) =>
+      expect(isStemSilenced(s, anyAfter)).toBe(
+        isStemSilenced(before[i], false),
+      ),
+    );
+  });
+});
 
 describe("clamp", () => {
   it("passes through in-range values", () => {
