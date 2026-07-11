@@ -37,20 +37,41 @@ export const STEM_DISPLAY: {
   { name: "other", label: "Other", short: "gtr + keys", colourToken: "--stem-other" },
 ];
 
+/** The R2 public bucket serving the model and the ORT runtime. */
+export const R2_PUBLIC_BASE =
+  "https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev";
+
 /** The shipped separation model: the 166MB fp16 baseline (settled Night 5
  *  decision; smaller download and R2 egress win over the 345MB pre-opt
  *  file, whose faster create remains documented as a fallback).
  *
- *  LAUNCH TODO: set VITE_MODEL_URL to the public R2 URL, e.g.
- *  https://models.<domain>/htdemucs_fp16weights.onnx. The dev default is
- *  served by the vite models middleware. */
-export const MODEL_URL: string =
-  (import.meta.env?.VITE_MODEL_URL as string | undefined) ??
-  "/models/htdemucs_fp16weights.onnx";
+ *  Resolution: VITE_MODEL_URL when set at BUILD time (Vite inlines it);
+ *  otherwise the vite models middleware in dev and the known R2 URL in
+ *  production. A production build must never fall back to a same-origin
+ *  /models path: Pages would answer it with index.html (SPA fallback,
+ *  status 200) and separation would fail with a confusing size mismatch,
+ *  which is exactly what happened when a deployed build missed the env
+ *  var. Note for Pages: dashboard variables reach dashboard-driven CI
+ *  builds only; a locally built dist deployed by direct upload sees only
+ *  the local shell's environment. */
+export const MODEL_URL: string = import.meta.env.VITE_MODEL_URL
+  ? (import.meta.env.VITE_MODEL_URL as string)
+  : import.meta.env.DEV
+    ? "/models/htdemucs_fp16weights.onnx"
+    : `${R2_PUBLIC_BASE}/htdemucs_fp16weights.onnx`;
+
+if (!import.meta.env.VITE_MODEL_URL && !import.meta.env.DEV) {
+  // Not fatal (the default above is the real bucket), but a launch build
+  // should pin its model URL explicitly.
+  console.warn(
+    `Woodshed: VITE_MODEL_URL was not set at build time; using the default R2 URL ${MODEL_URL}. Set it in the BUILD environment to silence this.`,
+  );
+}
+
 /** SHA-256 of the model file, verified on first download. Recompute if
  *  the file ever changes (PowerShell: Get-FileHash -Algorithm SHA256). */
 export const MODEL_SHA256: string =
-  (import.meta.env?.VITE_MODEL_SHA256 as string | undefined) ??
+  (import.meta.env.VITE_MODEL_SHA256 as string | undefined) ??
   "d05c269d0178d2a72ad484b10b11dd370193fc923201c3b27a99f848745db70a";
 /** Byte size of the model, for progress display when the server omits
  *  Content-Length. */
@@ -68,8 +89,8 @@ export const MODEL_ID = "htdemucs_fp16_v1";
  *  can never skew in development. The service worker caches these after
  *  first fetch, preserving offline use after first load. */
 export const ORT_VERSION = "1.27.0";
-export const ORT_BASE_URL: string =
-  (import.meta.env?.VITE_ORT_BASE_URL as string | undefined) ??
-  (import.meta.env?.DEV
+export const ORT_BASE_URL: string = import.meta.env.VITE_ORT_BASE_URL
+  ? (import.meta.env.VITE_ORT_BASE_URL as string)
+  : import.meta.env.DEV
     ? "/ort/"
-    : `https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/${ORT_VERSION}/`);
+    : `${R2_PUBLIC_BASE}/ort/${ORT_VERSION}/`;

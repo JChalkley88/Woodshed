@@ -490,3 +490,15 @@ https://pub-11c2ac1884664d0e9b5505f469580557.r2.dev/ort/1.27.0/ort-wasm-simd-thr
 ```
 
 Set Content-Type metadata: `application/wasm` on the .wasm files (WebAssembly streaming compilation wants it) and `text/javascript` on the .mjs files (dynamic module import requires a JavaScript MIME type; this one is mandatory, not cosmetic). Bucket CORS must allow the app: AllowedOrigins = the production origin (plus http://localhost:4174 and http://localhost:5173 if you want to test the R2 path locally via VITE_ORT_BASE_URL), AllowedMethods = GET, AllowedHeaders = *. CORS-mode fetches satisfy the app's COEP isolation, and the same rules cover the model object already in the bucket.
+
+---
+
+## Daylight amendment 2 (11 Jul 2026): deployed build fetched the model from its own origin
+
+**Symptom:** the deployed desk requested `/models/htdemucs_fp16weights.onnx` from the Pages origin, which answered with index.html (SPA fallback, status 200, 829 bytes), so separation failed with a size error despite `VITE_MODEL_URL` being set in the Pages dashboard.
+
+**Root cause:** two stacked problems. First, Vite inlines `import.meta.env.VITE_*` at BUILD time, and dashboard variables reach only dashboard-driven CI builds; a locally built `dist/` deployed by direct upload sees only the local shell's environment, so the variable never entered the bundle (confirmed by sentinel test: with the var present at build the URL inlines correctly, including through the previous optional-chaining form). Second, and the real defect, the fallback for a missing variable was a same-origin `/models/...` path, which is only correct in dev; in production it silently produced a URL the host answers with HTML.
+
+**Fix:** URL resolution is now mode-aware with no same-origin production path at all. `VITE_MODEL_URL` wins when set at build time; otherwise dev uses the local middleware and production uses the known R2 public URL, so a deployed build is correct even with no env vars. `VITE_ORT_BASE_URL` follows the identical pattern (its old fallback was already R2, which is why the runtime files were unaffected). Three guards now surface a missing variable instead of masking it: the build logs each variable's value, or a loud warning naming the build-environment requirement, via a small plugin; the deployed app logs a console warning when running on the baked-in default; and the model download fails fast with "the model URL returned a web page, not a model" when any URL is answered with text/html, so this whole class of misconfiguration names itself at the point of failure. The service worker was checked and cleared: its .onnx handling is cache-first passthrough with no rewriting.
+
+**Verified:** production bundles (page and worker) contain the R2 URL and no same-origin `/models` string; a sentinel `VITE_MODEL_URL` at build time overrides it in both bundles; dist stays under the Pages 25 MiB limit; 112 unit, 27 mocked e2e, and the offline build test all green. Redeploying the current build fixes the live site with no dashboard changes required; setting `VITE_MODEL_URL`/`VITE_ORT_BASE_URL` in the actual build environment remains the explicit override.

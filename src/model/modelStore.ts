@@ -106,6 +106,14 @@ export class ModelStore {
     if (!response.ok || !response.body) {
       throw new Error(`model download failed (HTTP ${response.status})`);
     }
+    // An SPA host answers unknown paths with index.html at status 200; a
+    // misconfigured model URL must say so instead of failing later with a
+    // baffling size or hash error.
+    if ((response.headers.get("Content-Type") ?? "").includes("text/html")) {
+      throw new Error(
+        `the model URL returned a web page, not a model (${MODEL_URL}). The build's VITE_MODEL_URL is wrong or missing.`,
+      );
+    }
     const totalBytes =
       Number(response.headers.get("Content-Length")) || MODEL_BYTES;
     this.set({ totalBytes });

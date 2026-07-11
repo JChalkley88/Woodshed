@@ -93,8 +93,37 @@ function serveModels(): Plugin {
   };
 }
 
+/** Says at build time exactly where the production bundle will fetch the
+ *  model and the ORT runtime from, and warns loudly when the env vars are
+ *  unset (Vite inlines import.meta.env.VITE_* at BUILD time, so a var set
+ *  only in a hosting dashboard does nothing for a locally built dist). */
+function announceDeliveryUrls(): Plugin {
+  return {
+    name: "woodshed:announce-delivery-urls",
+    apply: "build",
+    buildStart() {
+      for (const name of ["VITE_MODEL_URL", "VITE_ORT_BASE_URL"]) {
+        const value = process.env[name];
+        if (value) {
+          this.info(`${name} = ${value}`);
+        } else {
+          this.warn(
+            `${name} is not set for this build; the bundle will use the default R2 URL baked into src/separation/constants.ts. Set it in the BUILD environment (not just the hosting dashboard) to override.`,
+          );
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), ortRuntimeLocal(), serveModels()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    ortRuntimeLocal(),
+    serveModels(),
+    announceDeliveryUrls(),
+  ],
   // 1) Don't try to pre-bundle the WASM-touching ORT entry.
   optimizeDeps: {
     exclude: ["onnxruntime-web"],
