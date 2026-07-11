@@ -13,6 +13,17 @@ export const STRIDE_SAMPLES = SEGMENT_SAMPLES - OVERLAP_SAMPLES;
 export const STEM_NAMES = ["drums", "bass", "other", "vocals"] as const;
 export type StemName = (typeof STEM_NAMES)[number];
 
+/** Named lookup into the htdemucs output tensor. This is the single source
+ *  of truth for which output index belongs to which stem; everything
+ *  downstream addresses stems by name, never by raw index. htdemucs output
+ *  order is fixed: 0 drums, 1 bass, 2 other, 3 vocals. */
+export const HTDEMUCS_OUTPUT_INDEX: Record<StemName, number> = {
+  drums: 0,
+  bass: 1,
+  other: 2,
+  vocals: 3,
+};
+
 /** Desk display order and identity colour tokens (design spec section 1). */
 export const STEM_DISPLAY: {
   name: StemName;

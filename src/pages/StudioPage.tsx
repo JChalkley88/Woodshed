@@ -203,7 +203,7 @@ export default function StudioPage() {
           <div className={`deck${dragOver ? " deck-drop" : ""}`}>
             {state.status === "ready" && state.stems && engine.stemPeaks && (
               <div data-testid="stem-lanes">
-                {STEM_DISPLAY.map((stem, i) => engine.stemPeaks && (
+                {STEM_DISPLAY.map((stem) => engine.stemPeaks && (
                   <div className="lane" key={stem.name}>
                     <div className="lane-tag">
                       <div
@@ -216,12 +216,12 @@ export default function StudioPage() {
                     </div>
                     <div className="lane-wave">
                       <WaveformLane
-                        peaks={engine.stemPeaks[i]}
+                        peaks={engine.stemPeaks[stem.name]}
                         duration={state.duration}
                         position={state.position}
                         loop={state.loop}
                         pendingLoopStart={state.pendingLoopStart}
-                        muted={state.stems![i].muted}
+                        muted={state.stems![stem.name].muted}
                         colourToken={stem.colourToken}
                         onSeek={(t) => void engine.seek(t)}
                       />
@@ -320,7 +320,7 @@ export default function StudioPage() {
           <div className="console">
             {state.stems || separating ? (
               STEM_DISPLAY.map((stem, i) => {
-                const strip = state.stems?.[i];
+                const strip = state.stems?.[stem.name];
                 const locked = !strip;
                 return (
                   <div
@@ -337,13 +337,13 @@ export default function StudioPage() {
                       led="red"
                       on={strip?.muted ?? false}
                       ariaLabel={`Mute ${stem.label}`}
-                      onChange={(on) => engine.setStemMuted(i, on)}
+                      onChange={(on) => engine.setStemMuted(stem.name, on)}
                     />
                     <div className="faderbay">
                       <Fader
                         value={strip?.gainDb ?? 0}
                         label={stem.label}
-                        onChange={(db) => engine.setStemGainDb(i, db)}
+                        onChange={(db) => engine.setStemGainDb(stem.name, db)}
                       />
                       <LEDMeter level={strip?.level ?? 0} label={stem.name} />
                     </div>

@@ -5,8 +5,14 @@
 // single worklet instance means stems can never drift: one clock, one
 // rate, one loop state.
 import SignalsmithStretch, { type StretchNode } from "signalsmith-stretch";
-import { int16ToFloat32 } from "../separation/chunking.ts";
-import { N_CHANNELS, N_STEMS, SAMPLE_RATE, STEM_DISPLAY } from "../separation/constants.ts";
+import { int16ToFloat32, namedStemRows } from "../separation/chunking.ts";
+import {
+  HTDEMUCS_OUTPUT_INDEX,
+  N_CHANNELS,
+  SAMPLE_RATE,
+  STEM_NAMES,
+  type StemName,
+} from "../separation/constants.ts";
 import {
   clamp,
   dbToGain,
@@ -43,8 +49,9 @@ export interface EngineState {
   loop: LoopRegion | null;
   /** Meter level for the single-track strip. */
   level: number;
-  /** null in single-track mode; four strips once stems are loaded. */
-  stems: StemStripState[] | null;
+  /** null in single-track mode; once stems are loaded, one strip per stem,
+   *  keyed by name (never by tensor index). */
+  stems: Record<StemName, StemStripState> | null;
 }
 
 const initialState: EngineState = {
@@ -76,8 +83,8 @@ export class PracticeEngine {
   private lastMeterTime = 0;
   /** Mixed-track waveform peaks. */
   peaks: Float32Array | null = null;
-  /** Per-stem waveform peaks once separated. */
-  stemPeaks: Float32Array[] | null = null;
+  /** Per-stem waveform peaks once separated, keyed by stem name. */
+  stemPeaks: Record<StemName, Float32Array> | null = null;
   /** Decoded 44.1kHz stereo source, kept until separation completes. */
   private sourceChannels: [Float32Array, Float32Array] | null = null;
 
@@ -167,17 +174,20 @@ export class PracticeEngine {
   async enterStemMode(rows: Int16Array[], totalSamples: number): Promise<void> {
     if (this.state.status !== "ready") return;
     const floats = rows.map((r) => int16ToFloat32(r));
-    this.stemPeaks = [];
-    for (let s = 0; s < N_STEMS; s++) {
-      this.stemPeaks.push(
-        computePeaks([floats[s * N_CHANNELS], floats[s * N_CHANNELS + 1]], 4096),
-      );
+    // Model output meets stem names exactly once, here, by named lookup.
+    const named = namedStemRows(floats);
+    const stemPeaks = {} as Record<StemName, Float32Array>;
+    const stems = {} as Record<StemName, StemStripState>;
+    for (const name of STEM_NAMES) {
+      stemPeaks[name] = computePeaks(named[name], 4096);
+      stems[name] = { gainDb: 0, muted: false, level: 0 };
     }
+    this.stemPeaks = stemPeaks;
     const { position, playing, duration } = this.state;
     await this.buildGraph(floats);
     this.sourceChannels = null; // stems are the source of truth now
     this.set({
-      stems: STEM_DISPLAY.map(() => ({ gainDb: 0, muted: false, level: 0 })),
+      stems,
       duration: Math.min(duration, totalSamples / SAMPLE_RATE),
     });
     this.applyStemGains();
@@ -266,13 +276,17 @@ export class PracticeEngine {
     this.lastMeterTime = now;
 
     if (this.state.stems) {
-      const stems = this.state.stems.map((strip, i) => {
-        this.analysers[i].getFloatTimeDomainData(this.meterBlock!);
+      const stems = {} as Record<StemName, StemStripState>;
+      for (const name of STEM_NAMES) {
+        const strip = this.state.stems[name];
+        this.analysers[HTDEMUCS_OUTPUT_INDEX[name]].getFloatTimeDomainData(
+          this.meterBlock!,
+        );
         const target = strip.muted
           ? 0
           : clamp(rms(this.meterBlock!) * 2.2, 0, 1);
-        return { ...strip, level: meterBallistics(strip.level, target) };
-      });
+        stems[name] = { ...strip, level: meterBallistics(strip.level, target) };
+      }
       return { stems };
     }
     this.analysers[0].getFloatTimeDomainData(this.meterBlock);
@@ -311,7 +325,7 @@ export class PracticeEngine {
     this.set({
       playing: false,
       level: 0,
-      stems: this.state.stems?.map((s) => ({ ...s, level: 0 })) ?? null,
+      stems: this.state.stems ? mapStems(this.state.stems, (s) => ({ ...s, level: 0 })) : null,
     });
   }
 
@@ -347,21 +361,23 @@ export class PracticeEngine {
     this.applyAllGains();
   }
 
-  /* -------- Stem strips -------- */
-  setStemGainDb(index: number, db: number): void {
+  /* -------- Stem strips (addressed by name, never by tensor index) -------- */
+  setStemGainDb(name: StemName, db: number): void {
     if (!this.state.stems) return;
-    const stems = this.state.stems.map((s, i) =>
-      i === index ? { ...s, gainDb: db } : s,
-    );
+    const stems = {
+      ...this.state.stems,
+      [name]: { ...this.state.stems[name], gainDb: db },
+    };
     this.set({ stems });
     this.applyStemGains();
   }
 
-  setStemMuted(index: number, muted: boolean): void {
+  setStemMuted(name: StemName, muted: boolean): void {
     if (!this.state.stems) return;
-    const stems = this.state.stems.map((s, i) =>
-      i === index ? { ...s, muted } : s,
-    );
+    const stems = {
+      ...this.state.stems,
+      [name]: { ...this.state.stems[name], muted },
+    };
     this.set({ stems });
     this.applyStemGains();
   }
@@ -380,13 +396,14 @@ export class PracticeEngine {
 
   private applyStemGains() {
     if (!this.state.stems || !this.ctx) return;
-    this.state.stems.forEach((strip, i) => {
-      this.gainNodes[i]?.gain.setTargetAtTime(
+    for (const name of STEM_NAMES) {
+      const strip = this.state.stems[name];
+      this.gainNodes[HTDEMUCS_OUTPUT_INDEX[name]]?.gain.setTargetAtTime(
         strip.muted ? 0 : dbToGain(strip.gainDb),
-        this.ctx!.currentTime,
+        this.ctx.currentTime,
         0.01,
       );
-    });
+    }
   }
 
   /* -------- Loop -------- */
@@ -419,6 +436,16 @@ export class PracticeEngine {
     this.set({ loop: region, pendingLoopStart: null });
     await this.applySchedule();
   }
+}
+
+/** Applies fn to every strip in a stem record, preserving name keys. */
+function mapStems(
+  stems: Record<StemName, StemStripState>,
+  fn: (strip: StemStripState, name: StemName) => StemStripState,
+): Record<StemName, StemStripState> {
+  const out = {} as Record<StemName, StemStripState>;
+  for (const name of STEM_NAMES) out[name] = fn(stems[name], name);
+  return out;
 }
 
 /** Max-abs peak per bucket across channels; pure and unit-testable. */

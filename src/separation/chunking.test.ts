@@ -3,6 +3,7 @@ import {
   float32ToInt16,
   floatToInt16,
   int16ToFloat32,
+  namedStemRows,
   OverlapAddAccumulator,
   planChunks,
   referenceOverlapAdd,
@@ -10,10 +11,12 @@ import {
   type ChunkPlan,
 } from "./chunking.ts";
 import {
+  HTDEMUCS_OUTPUT_INDEX,
   N_CHANNELS,
   N_STEMS,
   OVERLAP_SAMPLES,
   SEGMENT_SAMPLES,
+  STEM_NAMES,
   STRIDE_SAMPLES,
 } from "./constants.ts";
 
@@ -22,6 +25,35 @@ describe("constants", () => {
     expect(SEGMENT_SAMPLES).toBe(343980);
     expect(OVERLAP_SAMPLES).toBe(Math.floor(343980 / 4));
     expect(STRIDE_SAMPLES).toBe(SEGMENT_SAMPLES - OVERLAP_SAMPLES);
+  });
+});
+
+describe("stem-label mapping", () => {
+  it("pins each named stem to its htdemucs output index", () => {
+    // htdemucs output order is fixed by the model, not by us. If this test
+    // fails, someone reordered a constant; the UI must never compensate by
+    // shuffling labels.
+    expect(HTDEMUCS_OUTPUT_INDEX.drums).toBe(0);
+    expect(HTDEMUCS_OUTPUT_INDEX.bass).toBe(1);
+    expect(HTDEMUCS_OUTPUT_INDEX.other).toBe(2);
+    expect(HTDEMUCS_OUTPUT_INDEX.vocals).toBe(3);
+    // The row-iteration tuple and the named mapping must agree.
+    STEM_NAMES.forEach((name, i) =>
+      expect(HTDEMUCS_OUTPUT_INDEX[name]).toBe(i),
+    );
+  });
+
+  it("assigns stem-major output rows to the right names, both channels", () => {
+    const rows = Array.from({ length: N_STEMS * N_CHANNELS }, (_, r) => `row${r}`);
+    const named = namedStemRows(rows);
+    expect(named.drums).toEqual(["row0", "row1"]);
+    expect(named.bass).toEqual(["row2", "row3"]);
+    expect(named.other).toEqual(["row4", "row5"]);
+    expect(named.vocals).toEqual(["row6", "row7"]);
+  });
+
+  it("rejects a row count that is not 4 stems by 2 channels", () => {
+    expect(() => namedStemRows(["a", "b", "c"])).toThrow(/stem rows/);
   });
 });
 

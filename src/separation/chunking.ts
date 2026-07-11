@@ -1,12 +1,33 @@
 // Pure chunking and reconstruction maths for chunked demucs inference.
 // No Web Audio, no ORT: everything here is unit-testable in Node.
 import {
+  HTDEMUCS_OUTPUT_INDEX,
   N_CHANNELS,
   N_STEMS,
   OVERLAP_SAMPLES,
   SEGMENT_SAMPLES,
+  STEM_NAMES,
   STRIDE_SAMPLES,
+  type StemName,
 } from "./constants.ts";
+
+/** Assigns the pipeline's stem-major output rows (stem s channel c at row
+ *  s * N_CHANNELS + c, in htdemucs output order) to named stems. This is
+ *  the one place model output meets stem names; consumers address the
+ *  result by name only. */
+export function namedStemRows<T>(rows: T[]): Record<StemName, [T, T]> {
+  if (rows.length !== N_STEMS * N_CHANNELS) {
+    throw new Error(
+      `expected ${N_STEMS * N_CHANNELS} stem rows, got ${rows.length}`,
+    );
+  }
+  const named = {} as Record<StemName, [T, T]>;
+  for (const name of STEM_NAMES) {
+    const s = HTDEMUCS_OUTPUT_INDEX[name];
+    named[name] = [rows[s * N_CHANNELS], rows[s * N_CHANNELS + 1]];
+  }
+  return named;
+}
 
 export interface ChunkPlan {
   index: number;
