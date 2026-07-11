@@ -8,11 +8,12 @@
 //   songs    — per-song practice state (scribbles, saved loops, last-used
 //              mixer settings), keyed like stems, restored on reopen
 //   chords   — detected chord segments per song (Night 4)
+//   settings — small singletons: the licence record, model download state
 import type { ChordSegment } from "../analysis/chords.ts";
 import { MODEL_ID, N_CHANNELS, N_STEMS, type StemName } from "./constants.ts";
 
 const DB_NAME = "woodshed";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface StemRecord {
   key: string;
@@ -56,6 +57,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("chords")) {
         db.createObjectStore("chords", { keyPath: "key" });
       }
+      if (!db.objectStoreNames.contains("settings")) {
+        db.createObjectStore("settings", { keyPath: "key" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -71,7 +75,7 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 async function store(
-  name: "stems" | "partials" | "songs" | "chords",
+  name: "stems" | "partials" | "songs" | "chords" | "settings",
   mode: IDBTransactionMode,
 ): Promise<IDBObjectStore> {
   const db = await openDb();
@@ -233,6 +237,23 @@ export async function putChords(record: ChordRecord): Promise<void> {
 
 export async function deleteChords(key: string): Promise<void> {
   await request((await store("chords", "readwrite")).delete(key));
+}
+
+/* ---------------- Settings singletons ---------------- */
+
+export async function getSetting<T>(key: string): Promise<T | undefined> {
+  const record = await request<{ key: string; value: T } | undefined>(
+    (await store("settings", "readonly")).get(key),
+  );
+  return record?.value;
+}
+
+export async function putSetting<T>(key: string, value: T): Promise<void> {
+  await request((await store("settings", "readwrite")).put({ key, value }));
+}
+
+export async function deleteSetting(key: string): Promise<void> {
+  await request((await store("settings", "readwrite")).delete(key));
 }
 
 /** Expected byte size of a full stem record for a given sample count

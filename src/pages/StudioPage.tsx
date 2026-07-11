@@ -32,7 +32,7 @@ import type {
   StemMixerSetting,
 } from "../separation/cache.ts";
 import { analyser } from "../analysis/analyser.ts";
-import { featureUnlocked } from "../licence/licence.ts";
+import { featureUnlocked, licence } from "../licence/licence.ts";
 import { ChordLane } from "../studio/ChordLane.tsx";
 import { ExportRack } from "../studio/ExportRack.tsx";
 import { LaneOverlay } from "../studio/LaneOverlay.tsx";
@@ -78,6 +78,9 @@ export default function StudioPage() {
   const sep = useSyncExternalStore(separator.subscribe, separator.getState);
   const chords = useSyncExternalStore(analyser.subscribe, analyser.getState);
   const [licencePanelOpen, setLicencePanelOpen] = useState(false);
+  // Subscribing makes featureUnlocked reactive to activation/deactivation.
+  useSyncExternalStore(licence.subscribe, licence.getState);
+  useEffect(() => void licence.init(), []);
   const chordsUnlocked = featureUnlocked("chords");
   const exportUnlocked = featureUnlocked("export");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -748,6 +751,7 @@ export default function StudioPage() {
       <div className="rack">
         <LicencePanel
           open={licencePanelOpen}
+          onOpen={() => setLicencePanelOpen(true)}
           onClose={() => setLicencePanelOpen(false)}
         />
         {state.status === "ready" && state.stems && songKey && state.fileName && (
